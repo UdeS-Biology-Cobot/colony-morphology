@@ -11,6 +11,97 @@ from skimage.measure import regionprops, regionprops_table, label
 from skimage.segmentation import watershed
 
 
+
+def find_petri_dish(image):
+    max_pixels = 1280*1280
+    median_blur_order = 5
+    minmax_radius = (1500, 2000)
+
+    # resize image to speedup algorithm
+    img_resize = image
+    scale = 1.0
+    max_x = image.shape[1]
+    max_y = image.shape[0]
+    if(image.size > max_pixels):
+        pixels = max_x * max_y
+        scale = 1.0 / (pixels / max_pixels);
+        point = (int(scale * max_x), int(scale * max_y))
+
+        img_resize = cv.resize(image, point, interpolation= cv.INTER_LINEAR)
+
+
+    # Convert to grayscale
+    img_gray = cv.cvtColor(img_resize, cv.COLOR_BGR2GRAY)
+
+    # Blur grayscale image
+    img_blur = cv.medianBlur(img_gray, median_blur_order)
+
+    #hold the image to help find circles
+    rt, th1 = cv.threshold(img_blur,160,255,cv.THRESH_BINARY_INV)
+
+    # Find circles is the image with Hough Circle Transform
+    # The algorithm returns a list of (x, y, radius) where (x, y) is center
+    minmax_radius_scaled = (int(minmax_radius[0]*scale), int(minmax_radius[1]*scale))
+
+
+    circles = cv.HoughCircles(img_blur, cv.HOUGH_GRADIENT, 2, \
+                 1, minRadius=minmax_radius_scaled[0], maxRadius=minmax_radius_scaled[1])
+
+    if not isinstance(circles, type(np.empty(0))):
+        print("Error - no circle found")
+        raise Exception('Error - no circle found')
+
+
+
+    circles = np.uint16(np.around(circles))
+    smallest_radius = float('inf')
+    img_alternate = img_resize.copy()
+    circle = None
+
+    for i in circles[0,:]:
+        if(i[2] < smallest_radius):
+            smallest_radius = i[2]
+            circle = i
+
+        # draw the outer circle
+        cv.circle(img_resize,(i[0],i[1]),i[2],(0,255,0),2)
+        # draw the center of the circle
+        cv.circle(img_resize,(i[0],i[1]),2,(0,0,255),3)
+
+    cv.imshow('detected circles',img_resize)
+    cv.waitKey(0)
+
+
+    cv.circle(img_alternate,(circle[0],circle[1]),circle[2],(0,255,0),2)
+        # draw the center of the circle
+    cv.circle(img_alternate,(circle[0],circle[1]),2,(0,0,255),3)
+
+    cv.imshow('smallest radiuscircles',img_alternate)
+    cv.waitKey(0)
+
+    # Make cicular mask
+    inv_scale = 1/scale
+    c_x = np.round(inv_scale*circle[0])
+    c_y = np.round(inv_scale*circle[1])
+
+    nx = np.linspace(-c_x, max_x - c_x - 1, max_x)
+    ny = np.linspace(-c_y, max_y - c_y - 1, max_y)
+    mesh_x, mesh_y = np.meshgrid(nx, ny)
+    c_mask = mesh_x ** 2 + mesh_y ** 2 <= (0.8*inv_scale*circle[2]) ** 2
+
+    # Apply circular mask
+    idx = (c_mask== False)
+    img_masked = np.copy(image)
+    img_masked[idx] = 0;
+    cv.imshow("BW2", cv.resize(img_masked, (720, 720)));
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+
+
+    return img_masked
+
+
+
 if __name__=="__main__":
     # Parameters
     min_size_small_holes = 50
@@ -23,30 +114,57 @@ if __name__=="__main__":
     plot_interactive_properties = True
 
     # Read image
-    img = cv.imread('/home/captain-yoshi/ws/Mimik/colony-morphology/dataset/sure_foreground.png')
+    img = cv.imread('/home/captain-yoshi/ws/Mimik/colony-morphology/dataset/ref.jpg')
     assert img is not None, "file could not be read, check with os.path.exists()"
 
+    # # Mask image to contain only the petri dish
+    img_dish = find_petri_dish(img)
+    # raise Exception("Sorry, no numbers below zero")
+
     # Convert to grayscale
-    img_gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    img_gray = cv.cvtColor(img_dish, cv.COLOR_BGR2GRAY)
+    # img_gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+
+
+    # Blur image
+    img_blur = cv.GaussianBlur(img_gray, (7, 7), 0)
+
+
+    # Apply threshold
+    (thresh, img_bw) = cv.threshold(img_blur, 175, 255, cv.THRESH_BINARY)
+
+    # Noise removal
+    kernel = np.ones((3,3),np.uint8)
+    opening = cv.morphologyEx(img_bw,cv.MORPH_OPEN,kernel, iterations = 2)
+
+    # Sure background area
+    sure_bg = cv.dilate(opening,kernel,iterations=3)
+
+    # Finding sure foreground area
+    distance = cv.distanceTransform(opening,cv.DIST_L2,5)
+    ret, sure_fg = cv.threshold(distance,0.1*distance.max(),255,0)
+
+    # Convert to int
+    sure_fg = np.uint8(sure_fg)
 
     # Remove small objects + Fill small holes
-    img_bw = img_gray > 0
-    img_rm_small_objects = morphology.remove_small_objects(img_bw, min_size_small_objects)
-    img_fill_holes = morphology.remove_small_holes(img_rm_small_objects, min_size_small_holes)
+    # It turns out we need the small objects to actually compute the min distance to nearest neighboring cells
+    # img_rm_small_objects = morphology.remove_small_objects(sure_fg, min_size_small_objects)
+    # img_fill_holes = morphology.remove_small_holes(img_, min_size_small_holes)
 
     # Now we want to separate the two objects in image
     # Generate the markers as local maxima of the distance to the background
-    img_distance = np.empty(img_fill_holes.shape)
-    ndi.distance_transform_edt(img_fill_holes, distances=img_distance)
+    img_distance = np.empty(sure_fg.shape)
+    ndi.distance_transform_edt(sure_fg, distances=img_distance)
 
     # Segment image using watershed technique
     print('Computing watershed')
-    coords = peak_local_max(img_distance, footprint=np.ones((3, 3)), labels=img_gray)
+    coords = peak_local_max(img_distance, footprint=np.ones((3, 3)), labels=sure_fg)
     img_peak_mask = np.zeros(img_distance.shape, dtype=bool)
     img_peak_mask[tuple(coords.T)] = True
 
     markers = ndi.label(img_peak_mask)[0]
-    img_labels = watershed(-img_distance, markers, mask=img_gray, connectivity=1, compactness=0)
+    img_labels = watershed(-img_distance, markers, mask=sure_fg, connectivity=1, compactness=0)
 
     # Retrieve metric from labels
     # Do not remove small objects as it will be required to remove overlapping colonies
