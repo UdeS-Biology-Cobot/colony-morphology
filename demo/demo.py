@@ -129,6 +129,9 @@ if __name__=="__main__":
 
     # Apply threshold
     (thresh, img_bw) = cv.threshold(img_blur, 175, 255, cv.THRESH_BINARY)
+    # (thresh, img_bw) = cv.threshold(img_blur, 0, 255, cv.THRESH_BINARY_INV | cv.THRESH_OTSU)
+    # img_bw = cv.adaptiveThreshold(img_blur, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 10, 10)
+
 
     # Noise removal
     kernel = np.ones((3,3),np.uint8)
@@ -309,3 +312,4 @@ if __name__=="__main__":
 
         print("Generating region properties interactively plot, this may take some time...")
         plot_region_roperties(img, img_labels, properties_wo_overlap, property_names)
+        # plot_region_roperties(img, img_labels, properties, property_names)
