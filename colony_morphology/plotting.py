@@ -80,7 +80,7 @@ def plot_region_roperties(image, labels, properties, property_names):
 
     # For each label, add a filled scatter trace for its contour,
     # and display the properties of the label in the hover of this trace.
-    for index in range(1, len(properties)):
+    for index in range(0, len(properties)):
         label_i = properties[index].label
         contour = measure.find_contours(labels == label_i, 0.5)[0]
         y, x = contour.T
