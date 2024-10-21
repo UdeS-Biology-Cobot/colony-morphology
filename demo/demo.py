@@ -212,12 +212,12 @@ if __name__=="__main__":
 
     # Compute metric for best colonies
     # Defined as:
-    #     max distance from nn * area * eccentricity^-1
+    #     max distance from nn * area * (1 - eccentricity)
     quality_metrics = []
     for p in properties_wo_overlap:
         nn = min_distance_nn[p.label - 1]
         nn_distance = nn[1]
-        quality_metrics.append((p.area * nn_distance * (1.0/p.eccentricity), p.label))
+        quality_metrics.append((p.area * nn_distance * (1.0 - p.eccentricity), p.label))
 
     quality_metrics.sort(reverse = True)
 
