@@ -36,9 +36,6 @@ def find_petri_dish(image):
     # Blur grayscale image
     img_blur = cv.medianBlur(img_gray, median_blur_order)
 
-    #hold the image to help find circles
-    rt, th1 = cv.threshold(img_blur,160,255,cv.THRESH_BINARY_INV)
-
     # Find circles is the image with Hough Circle Transform
     # The algorithm returns a list of (x, y, radius) where (x, y) is center
     minmax_radius_scaled = (int(minmax_radius[0]*scale), int(minmax_radius[1]*scale))
@@ -170,7 +167,7 @@ if __name__=="__main__":
     # Do not remove small objects as it will be required to remove overlapping colonies
     print('Computing region properties')
     properties = regionprops(img_labels, intensity_image=None)
-    print(f'properties size={len(properties)}')
+    print(f'Properties size = {len(properties)}')
 
     # Compute min distance to nearest neighboring cells from edge (~1minute 30 seconds)
     # TODO from centroids would be faster, but wold require to change the instersection removal...
@@ -272,11 +269,6 @@ if __name__=="__main__":
             ax[9].annotate(index, xy=(point[0]+radius, point[1]+radius), color='red')
             index += 1
 
-            # ax[9].plot(point[0], point[1], 'o', ms=p.equivalent_diameter_area, mfc=None, mew=2)
-            #break
-            # ax[9].add_pathc(p.centroid[1], p.centroid[0], s=20, c='red', marker='x', linewidth=1)
-
-
 
         for a in ax:
             a.set_axis_off()
@@ -306,17 +298,6 @@ if __name__=="__main__":
             if (index == number_of_cells_to_pick):
                 break
             index += 1
-
-
-        # index = 1
-        # for p in properties_wo_overlap:
-        #     point = (p.centroid[1], p.centroid[0])
-        #     radius = p.equivalent_diameter_area/2.0 + 5
-
-        #     circle = plt.Circle(point, radius=radius, fc='none', color='red')
-        #     ax.add_patch(circle)
-        #     ax.annotate(index, xy=(point[0]+radius, point[1]-radius), color='red')
-        #     index += 1
 
         plt.tight_layout()
         plt.show()
