@@ -210,6 +210,9 @@ if __name__=="__main__":
             except ValueError:
                  pass  # do nothing
 
+    print(f'Properties remaining = {len(properties_wo_overlap)}')
+
+
     # Compute metric for best colonies
     # Defined as:
     #     max distance from nn * area * (1 - eccentricity)
