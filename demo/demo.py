@@ -235,35 +235,41 @@ if __name__=="__main__":
         ax[0].set_title('Input image')
         ax[1].imshow(img_gray, cmap=plt.cm.gray)
         ax[1].set_title('Grayscale')
-        ax[2].imshow(img_rm_small_objects, cmap=plt.cm.gray)
-        ax[2].set_title(f'Small objects removed min size={min_size_small_objects}')
-        ax[3].imshow(img_fill_holes, cmap=plt.cm.gray)
-        ax[3].set_title(f'Small holes removed min size={min_size_small_holes}')
+        ax[2].imshow(img_bw, cmap=plt.cm.gray)
+        ax[2].set_title(f'Threshold')
 
-        ax[4].imshow(img_distance, cmap=plt.cm.gray)
-        ax[4].set_title('Distance transform')
-        ax[5].imshow(-img_distance, cmap=plt.cm.gray)
-        ax[5].set_title('Distance transform negative')
 
-        ax[6].imshow(img_labels, cmap=plt.cm.nipy_spectral)
-        ax[6].set_title('Watershed segmentation')
 
-        ax[7].imshow(img)
-        ax[7].set_title(f'Cell\'s Centroid N={len(properties)}')
-        # add X marks on centroids
-        for p in properties:
-            ax[7].scatter(p.centroid[1], p.centroid[0], s=20, c='red', marker='x', linewidth=1)
+
+        ax[3].imshow(sure_bg, cmap=plt.cm.gray)
+        ax[3].set_title(f'Sure Foreground')
+        ax[4].imshow(sure_fg, cmap=plt.cm.gray)
+        ax[4].set_title(f'Sure Background')
+
+        ax[5].imshow(img_distance, cmap=plt.cm.gray)
+        ax[5].set_title('Distance transform')
+        ax[6].imshow(-img_distance, cmap=plt.cm.gray)
+        ax[6].set_title('Distance transform negative')
+
+        ax[7].imshow(img_labels, cmap=plt.cm.nipy_spectral)
+        ax[7].set_title('Watershed segmentation')
 
         ax[8].imshow(img)
-        ax[8].set_title(f'Overlapping cell\'s removed N={len(properties_wo_overlap)}')
+        ax[8].set_title(f'Cell\'s Centroid N={len(properties)}')
         # add X marks on centroids
-        for p in properties_wo_overlap:
+        for p in properties:
             ax[8].scatter(p.centroid[1], p.centroid[0], s=20, c='red', marker='x', linewidth=1)
 
         ax[9].imshow(img)
-        ax[9].set_title(f'Best colonies to pick')
+        ax[9].set_title(f'Overlapping cell\'s removed N={len(properties_wo_overlap)}')
+        # add X marks on centroids
+        for p in properties_wo_overlap:
+            ax[9].scatter(p.centroid[1], p.centroid[0], s=20, c='red', marker='x', linewidth=1)
 
-        ax[9].patches
+        ax[10].imshow(img)
+        ax[10].set_title(f'Best colonies to pick')
+
+        ax[10].patches
         # circle up best matches
         index = 1
         for p in properties_wo_overlap:
@@ -271,8 +277,8 @@ if __name__=="__main__":
             radius = p.equivalent_diameter_area/2.0 + 5
 
             circle = plt.Circle(point, radius=radius, fc='none', color='red')
-            ax[9].add_patch(circle)
-            ax[9].annotate(index, xy=(point[0]+radius, point[1]+radius), color='red')
+            ax[10].add_patch(circle)
+            ax[10].annotate(index, xy=(point[0]+radius, point[1]+radius), color='red')
             index += 1
 
 
