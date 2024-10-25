@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from colony_morphology.geometry import *
-from colony_morphology.plotting import plot_bboxes, plot_region_roperties
+from colony_morphology.plotting import plot_bboxes, plot_region_roperties, image_resize
 import cv2 as cv
 import numpy as np
 from matplotlib import pyplot as plt
@@ -90,7 +90,7 @@ def find_petri_dish(image):
     idx = (c_mask== False)
     img_masked = np.copy(image)
     img_masked[idx] = 0;
-    cv.imshow("BW2", cv.resize(img_masked, (720, 720)));
+    cv.imshow("BW2", image_resize(img_masked, height=1280))
     cv.waitKey(0)
     cv.destroyAllWindows()
 
