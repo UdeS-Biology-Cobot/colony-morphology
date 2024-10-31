@@ -6,6 +6,18 @@ from skimage.feature import canny
 from skimage.transform import hough_circle, hough_circle_peaks
 
 
+def create_circlular_mask(shape, centroid, radius, shrink_ratio=1, scale=1):
+    inv_scale = 1/scale
+    c_x = np.round(inv_scale*centroid[0])
+    c_y = np.round(inv_scale*centroid[1])
+
+    nx = np.linspace(-c_x, shape[0] - c_x - 1, shape[0])
+    ny = np.linspace(-c_y, shape[1] - c_y - 1, shape[1])
+    mesh_x, mesh_y = np.meshgrid(nx, ny)
+    c_mask = mesh_x ** 2 + mesh_y ** 2 <= (shrink_ratio*inv_scale*radius) ** 2
+
+    return c_mask
+
 
 # https://github.com/morris-lab/Colony-counter
 def detect_circle_by_canny(image_bw, radius=395, n_peaks=20):
