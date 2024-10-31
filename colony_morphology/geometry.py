@@ -1,7 +1,147 @@
 import numpy as np
 import shapely
 from skimage import measure
+from skimage.draw import disk
+from skimage.feature import canny
+from skimage.transform import hough_circle, hough_circle_peaks
 
+
+
+# https://github.com/morris-lab/Colony-counter
+def detect_circle_by_canny(image_bw, radius=395, n_peaks=20):
+    edges = canny(image_bw, sigma=2)
+    hough_res = hough_circle(edges, [radius])
+    accums, cx, cy, radii = hough_circle_peaks(hough_res, [radius],
+                                               total_num_peaks=n_peaks)
+
+    label = np.zeros_like(image_bw)
+    ind = 1
+    for center_y, center_x, radius in zip(cy, cx, radii):
+        circy, circx = disk((center_y, center_x), radius,
+                                        shape=image_bw.shape)
+        label[circy, circx] = ind
+        ind += 1
+
+    return label.astype(int)
+
+def _get_radius(bbox):
+    minr, minc, maxr, maxc = bbox
+    r = np.array([[maxr - minr], [maxc - minc]]).mean()/2
+    return r
+
+def _bbox_to_center(bbox):
+    minr, minc, maxr, maxc = bbox
+    c = int(np.array([minc, maxc]).mean())
+    r = int(np.array([minr, maxr]).mean())
+    return r, c
+
+def make_circle_label(bb_list, img_shape):
+
+    # get radious
+    radius = np.median([_get_radius(i) for i in bb_list])
+
+    # draw circles in an image
+    label = np.zeros(img_shape)
+    id = 1
+    for bb in bb_list:
+        # get centroid
+        r, c = _bbox_to_center(bb)
+
+        # draw circle
+        rr, cc = disk((r, c), radius)
+        label[rr, cc] = id
+        id += 1
+
+    return label.astype(int)
+
+def crop_circle(image, shrinkage_ratio=0.95):
+
+    x, y = image.shape
+    center = (int(x/2), int(y/2))
+    diameter = min(center)
+
+    threshold = (diameter*shrinkage_ratio)**2
+
+    # initialize mask
+    mask = np.zeros_like(image)
+
+    # crop as circle.
+    for x_ in range(x):
+        for y_ in range(y):
+            dist = (x_ - center[0])**2 + (y_ - center[1])**2
+            mask[x_, y_] = (dist < threshold)
+
+    return image*mask
+
+
+
+def detect_area_by_canny(image, n_samples=None, radius=395, n_peaks=20, verbose=True):
+    """
+    The method detects sample area in input image.
+    Large, white and circle-like object in the input image will be
+    detected as sample area.
+
+    Args:
+        verbose (bool): if True it plot the detection results
+
+    """
+    if verbose:
+        print("detecting sample area...")
+
+
+    # 1. Segmentation
+    bw = image.copy()
+
+    # detect circles by canny method
+    labeled = detect_circle_by_canny(bw, radius=radius, n_peaks=n_peaks)
+
+
+    # 2. region props
+    props = np.array(measure.regionprops(label_image=labeled, intensity_image=image))
+    bboxs = np.array([prop.bbox for prop in props])
+    areas = np.array([prop.area for prop in props])
+    cordinates = np.array([prop.centroid for prop in props])
+    eccentricities = np.array([prop.eccentricity for prop in props])
+    intensity = np.array([prop.intensity_image.mean() for prop in props])
+
+
+    # 3. filter object
+
+    selected = (areas >= np.percentile(areas, 90)) & (eccentricities < 0.3)
+
+
+    # update labels
+    labeled = make_circle_label(bb_list=bboxs[selected], img_shape=image.shape)
+
+    # Region props again
+    props = np.array(measure.regionprops(label_image=labeled, intensity_image=image))
+    bboxs = np.array([prop.bbox for prop in props])
+    areas = np.array([prop.area for prop in props])
+    cordinates = np.array([prop.centroid for prop in props])
+    eccentricities = np.array([prop.eccentricity for prop in props])
+    intensity = np.array([prop.intensity_image.mean() for prop in props])
+
+    if not n_samples is None:
+        ind = np.argsort(intensity)[-n_samples:]
+        props = props[ind]
+        bboxs = bboxs[ind]
+        areas = areas[ind]
+        cordinates = cordinates[ind]
+        eccentricities = eccentricities[ind]
+
+
+
+    # sort by cordinate y
+    idx = np.argsort(cordinates[:, 0])
+
+    # self._props = props[idx]
+    # self.props["bboxs"] = bboxs[idx]
+    # self.props["areas"] = areas[idx]
+    # self.props["cordinates"] = cordinates[idx]
+    # self.props["eccentricities"] = eccentricities[idx]
+    # self.props["names"] = [f"sample_{i}" for i in range(len(self.props["areas"]))]
+
+    return props[idx]
 
 
 # https://forum.image.sc/t/calculating-distance-to-nearest-neighboring-cells-edge-not-centroid/78075/2
