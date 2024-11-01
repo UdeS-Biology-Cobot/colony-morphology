@@ -2,13 +2,13 @@
 Python3 library to analyse culture characteristics of a bacterial colony on an agar plate.
 
 ## Dependencies
-Install the required dependencies:
+Install dependencies:
 ``` sh
 $ pip install -r requirements
 ```
 
 ## Build
-Build this library:
+Build library:
 ``` sh
 $ pip install .
 ```
