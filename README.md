@@ -36,9 +36,7 @@ $ pip install .
 
 ## Run
 
-Try different parameters values, you can also plot different sequences:
-- Petri dish mask
-- Segmentation sequence
+Try playing with different [parameters](./demo/demo.py#L30-L35), you can also enable different [plots](./demo/demo.py#L51-L55):
 
 ``` sh
 # realsense camera
