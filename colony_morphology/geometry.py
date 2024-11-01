@@ -87,20 +87,15 @@ def crop_circle(image, shrinkage_ratio=0.95):
 
 
 
-def detect_area_by_canny(image, n_samples=None, radius=395, n_peaks=20, verbose=True):
+def detect_area_by_canny(image, n_samples=None, radius=395, n_peaks=20):
     """
     The method detects sample area in input image.
     Large, white and circle-like object in the input image will be
     detected as sample area.
 
     Args:
-        verbose (bool): if True it plot the detection results
 
     """
-    if verbose:
-        print("detecting sample area...")
-
-
     # 1. Segmentation
     bw = image.copy()
 
