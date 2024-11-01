@@ -11,6 +11,7 @@ from skimage.measure import regionprops, regionprops_table, label
 from skimage.segmentation import watershed
 
 
+import os
 
 def find_petri_dish(image):
     max_pixels = 1280*1280
@@ -111,7 +112,9 @@ if __name__=="__main__":
     plot_interactive_properties = True
 
     # Read image
-    img = cv.imread('/home/captain-yoshi/ws/Mimik/colony-morphology/dataset/ref.jpg')
+    absolute_path = os.path.join(os.getcwd(), "dataset/nikon_d5300_1.jpg")
+
+    img = cv.imread(absolute_path)
     assert img is not None, "file could not be read, check with os.path.exists()"
 
     # # Mask image to contain only the petri dish
