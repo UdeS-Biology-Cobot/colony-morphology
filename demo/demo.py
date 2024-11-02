@@ -14,6 +14,7 @@ from scipy import ndimage as ndi
 from scipy.spatial import cKDTree
 from skimage import color, io, morphology
 from skimage.feature import peak_local_max
+from skimage.filters import try_all_threshold, threshold_yen, threshold_otsu, threshold_local
 from skimage.measure import regionprops, regionprops_table, label
 from skimage.segmentation import watershed
 from numpy.linalg import norm
@@ -49,6 +50,7 @@ if __name__=="__main__":
 
 
     plot_petri_process = True
+    plot_all_threshold = True
     plot_segmentation_process = False
     plot_cell_annotation = True
     plot_interactive_properties = False
@@ -152,6 +154,14 @@ if __name__=="__main__":
 
     # Blur image
     img_blur = cv.GaussianBlur(img_gray, (7, 7), 0)
+
+
+    # plot all threshold algorithm's
+    if(plot_all_threshold):
+        fig, ax = try_all_threshold(img_blur, figsize=(10, 8), verbose=False)
+        plt.show()
+
+
 
     # Apply threshold
     # (thresh, img_bw) = cv.threshold(img_blur, 195, 255, cv.THRESH_BINARY_INV)
