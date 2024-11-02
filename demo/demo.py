@@ -2,6 +2,8 @@
 from colony_morphology.geometry import *
 from colony_morphology.image_transform import *
 from colony_morphology.plotting import plot_bboxes, plot_region_roperties
+from colony_morphology.skimage_util import compactness, min_distance_nn, cell_quality
+from colony_morphology.metric import compactness as compute_compactness
 
 import argparse
 import cv2 as cv
@@ -217,11 +219,19 @@ if __name__=="__main__":
     print('Computing region properties...')
     start = time.time()
 
-    properties = regionprops(img_labels, intensity_image=img_cropped)
+    # add extra properties, some function must be populated afterwards
+    extra_callbacks = (compactness, min_distance_nn, cell_quality)
+
+    properties = regionprops(img_labels, intensity_image=img_cropped, extra_properties=extra_callbacks)
 
     end = time.time()
     print(f'[{end-start:g} seconds]')
     print(f'    Region properties found = {len(properties)}')
+
+    # Compute compactness
+    for p in properties:
+        p.compactness = compute_compactness(p.area, p.perimeter)
+
 
     # Find the nearest neighbors with ckDTree
     print('Computing distance to nearest neighboring cells...')
@@ -230,11 +240,12 @@ if __name__=="__main__":
     centroids = [p["centroid"] for p in properties]
     tree = cKDTree(centroids)
 
-    min_distance_nn = np.empty(len(properties), dtype=object)
     for i in range(0, len(centroids)):
         centroid = centroids[i]
         dd, ii = tree.query(centroid, 2)
-        min_distance_nn[i] = dd[1]
+
+        p = properties[i]
+        p.min_distance_nn = dd[1]
 
     end = time.time()
     print(f'[{end-start:g} seconds]')
@@ -246,20 +257,15 @@ if __name__=="__main__":
     quality_metrics = []
     quality_metrics = np.empty(len(properties), dtype=object)
     for i in range(0, len(properties)):
-        nn_distance = min_distance_nn[i]
         p = properties[i]
-        quality_metrics[i] = (p.area * nn_distance * (1.0 - p.eccentricity), p.label)
+        quality_metrics[i] = (p.area * p.min_distance_nn * (1.0 - p.eccentricity), p.label)
 
         # discard cells
         if(p.equivalent_diameter_area < cell_min_diameter or
            p.equivalent_diameter_area > cell_max_diameter):
             quality_metrics[i] = (0, p.label)
 
-
-        # if (p.area <= 10):
-        # if (p.area > 100):
-            # quality_metrics[i] = (0, p.label)
-
+        p.cell_quality = quality_metrics[i][0]
 
     reverse_metrics = sorted(quality_metrics, key=lambda x: (-x[0], x[1]))
 
@@ -374,7 +380,7 @@ if __name__=="__main__":
 
     # Plot region properties interactively
     if (plot_interactive_properties):
-        property_names = ['area', 'eccentricity', 'perimeter']
+        property_names = ['area', 'eccentricity', 'perimeter', 'solidity', 'compactness', 'min_distance_nn', 'cell_quality']
 
         print("Generating region properties interactively plot, this may take some time...")
         plot_region_roperties(img_original_cropped, img_labels, properties, property_names)
