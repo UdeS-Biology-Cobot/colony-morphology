@@ -232,7 +232,11 @@ if __name__=="__main__":
 
     # Compute compactness
     for p in properties:
-        p.compactness = compute_compactness(p.area, p.perimeter)
+        # avoid division by zero
+        if(p.perimeter == 0.0):
+            p.compactness = 0.0
+        else:
+            p.compactness = compute_compactness(p.area, p.perimeter)
 
 
     # Find the nearest neighbors with ckDTree
@@ -265,7 +269,7 @@ if __name__=="__main__":
         # discard cells
         if(p.equivalent_diameter_area < cell_min_diameter or
            p.equivalent_diameter_area > cell_max_diameter):
-            quality_metrics[i] = (0, p.label)
+            quality_metrics[i] = (0.0, p.label)
 
         p.cell_quality = quality_metrics[i][0]
 
