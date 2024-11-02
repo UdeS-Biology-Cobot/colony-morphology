@@ -1,10 +1,5 @@
 import numpy as np
 
-# https://stackoverflow.com/a/75829470
-# def coords_to_mask(coords, shape):
-#     mask = np.zeros(shape, dtype=bool)
-#     mask[coords] = True
-#     return mask
 
 
 # Excluding Intensity metrics
