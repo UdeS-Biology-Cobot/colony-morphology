@@ -6,28 +6,28 @@ import numpy as np
 #      It is up to the user to overwrite these fields afterwards.
 
 def compactness(regionmask):
-    return 0
+    return 0.0
 
 def min_distance_nn(regionmask):
-    return 0
+    return 0.0
 
 def cell_quality(region_mask):
-    return 0
+    return 0.0
 
 def custom1(regionmask):
-    return 0
+    return 0.0
 
 def custom2(regionmask):
-    return 0
+    return 0.0
 
 def custom3(regionmask):
-    return 0
+    return 0.0
 
 def custom4(regionmask):
-    return 0
+    return 0.0
 
 def custom5(regionmask):
-    return 0
+    return 0.0
 
 # Excluding Intensity metrics
 RegionPropertyNames =(
