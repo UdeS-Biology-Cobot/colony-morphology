@@ -12,6 +12,7 @@ import numpy as np
 import matplotlib
 from matplotlib import pyplot as plt
 import os
+import pandas as pd
 from scipy import ndimage as ndi
 from scipy.spatial import cKDTree
 from skimage import color, io, morphology
@@ -57,6 +58,7 @@ if __name__=="__main__":
     plot_cell_annotation = True
     plot_interactive_properties = False
     save_pictures = False
+    save_properties = False
 
     cell_min_diameter = cell_min_radius * 2.0
     cell_max_diameter = cell_max_radius * 2.0
@@ -387,11 +389,11 @@ if __name__=="__main__":
 
 
 
-    if(save_pictures):
 
-        path = os.path.join(os.getcwd(), "result/")
-        path += time.strftime("%Y%m%d-%H%M%S") #avoid name clash
+    path = os.path.join(os.getcwd(), "result/")
+    path += time.strftime("%Y%m%d-%H%M%S") #avoid name clash
 
+    if(save_pictures or save_properties):
         # Create the directory
         try:
             os.mkdir(path)
@@ -403,6 +405,61 @@ if __name__=="__main__":
         except Exception as e:
             print(f"An error occurred: {e}")
 
+
+    if(save_pictures):
         io.imsave(path + '/cropped.png', img_cropped)
         with open(path + '/annotated.png', "wb") as f:
             f.write(imgdata.read())
+
+    if(save_properties):
+        # Must recompute to have new metrics...
+        prop_names = ('label',
+                     'cell_quality',    # custom metric
+                     'compactness',     # custom metric
+                     'min_distance_nn', # custom metric
+                     'area',
+                     'area_bbox',
+                     'area_convex',
+                     'area_filled',
+                     'axis_major_length',
+                     'axis_minor_length',
+                     'bbox',
+                     'centroid',
+                     'centroid_local',
+                     'coords',
+                     'eccentricity',
+                     'equivalent_diameter_area',
+                     'euler_number',
+                     'extent',
+                     'feret_diameter_max',
+                     'image',
+                     'image_convex',
+                     'image_filled',
+                     'inertia_tensor',
+                     'inertia_tensor_eigvals',
+                     'label',
+                     'moments',
+                     'moments_central',
+                     'moments_hu',
+                     'moments_normalized',
+                     'orientation',
+                     'perimeter',
+                     'perimeter_crofton',
+                     'slice',
+                     'solidity',)
+
+        props = measure.regionprops_table(img_labels, intensity_image=img_cropped,
+                                          properties=prop_names,
+                                          extra_properties=extra_callbacks)
+
+        # add metrics to props
+        for i in range(0, len(properties)):
+            p = properties[i]
+
+            props["compactness"][i] = p.compactness
+            props["min_distance_nn"][i] = p.min_distance_nn
+            props["cell_quality"][i] = p.cell_quality
+
+
+        df = pd.DataFrame(props)
+        df.to_excel(path + '/region_properties.xlsx', index=False)
