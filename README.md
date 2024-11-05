@@ -38,12 +38,12 @@ Try playing with different [parameters](./demo/demo.py#L30-L35), you can also en
 
 ``` sh
 # realsense camera
-$ python3 demo/demo.py --image_path=dataset/intel_rs_d415_1.png --dish_radius=400 --cell_min_radius=3 --cell_max_radius=10
+$ python3 demo/demo.py --image_path=dataset/intel_rs_d415_1.png --dish_radius=400
 
-$ python3 demo/demo.py --image_path=dataset/intel_rs_d415_2.png --dish_radius=400 --cell_min_radius=3 --cell_max_radius=10
+$ python3 demo/demo.py --image_path=dataset/intel_rs_d415_2.png --dish_radius=400
 
 # oneplus camera
-$ python3 demo/demo.py --image_path=dataset/oneplus_hd1900_1.jpg --dish_radius=1050 --dish_inner_offset=200 --cell_min_radius=6 --cell_max_radius=26
+$ python3 demo/demo.py --image_path=dataset/oneplus_hd1900_1.jpg --dish_radius=1050 --dish_inner_offset=200 --cell_min_radius=6
 
 ```
 
