@@ -263,12 +263,12 @@ if __name__=="__main__":
     quality_metrics = np.empty(len(properties), dtype=object)
     for i in range(0, len(properties)):
         p = properties[i]
-        quality_metrics[i] = (p.area * p.min_distance_nn * (1.0 - p.eccentricity), p.label)
 
+        quality_metrics[i] = (p.area * p.min_distance_nn * (1.0 - p.eccentricity), i)
         # discard cells
         if(p.equivalent_diameter_area < cell_min_diameter or
            p.equivalent_diameter_area > cell_max_diameter):
-            quality_metrics[i] = (0.0, p.label)
+            quality_metrics[i] = (0.0, i)
 
         p.cell_quality = quality_metrics[i][0]
 
@@ -361,7 +361,7 @@ if __name__=="__main__":
         # circle up best matches
         index  = 1
         for metric in reverse_metrics:
-            p = properties[metric[1]-1]
+            p = properties[metric[1]]
 
             point = (p.centroid[1], p.centroid[0])
             radius = p.equivalent_diameter_area/2.0 + 5
