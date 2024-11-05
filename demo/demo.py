@@ -48,6 +48,10 @@ if __name__=="__main__":
     cell_max_radius = args.cell_max_radius
     number_of_cells_to_pick = args.number_of_cells
 
+    min_compactness = 0.6
+    min_solidity = 0.85
+    max_eccentricity = 0.8
+
     absolute_path = image_path
     if (not os.path.isabs(image_path)):
         absolute_path = os.path.join(os.getcwd(), image_path)
@@ -269,19 +273,43 @@ if __name__=="__main__":
 
 
     # Compute metric for best colonies
-    # Defined as:
-    #     max distance from nn * area * (1 - eccentricity)
+    max_min_distance_nn = max(p["min_distance_nn"] for p in properties if p["compactness"] >= 0.2)
+    max_area = max(p["area"] for p in properties if p["compactness"] >= 0.2)
+
     quality_metrics = np.empty(len(properties), dtype=object)
     for i in range(0, len(properties)):
         p = properties[i]
 
-        quality_metrics[i] = (p.area * p.min_distance_nn * (1.0 - p.eccentricity), i)
-        # discard cells
-        if(p.equivalent_diameter_area < cell_min_diameter or
-           p.equivalent_diameter_area > cell_max_diameter):
-            quality_metrics[i] = (0.0, i)
+        # normalize
+        area = p.area / max_area
+        min_distance_nn = p.min_distance_nn / max_min_distance_nn
 
-        p.cell_quality = quality_metrics[i][0]
+        # clamp compactness to 1
+        compactness = p.compactness
+        if(compactness > 1.0):
+           compactness =1.0
+
+        # invert eccentricity ratio
+        eccentricity = 1.0 - p.eccentricity
+
+        # compute quality metric
+        cell_quality = (1.0  * area +
+                        2.0  * min_distance_nn +
+                        1.0  * compactness +
+                        0.25 * eccentricity +
+                        1.0  * p.solidity) / 5.0
+
+        # discard cells
+        if(p.compactness < min_compactness or
+           p.solidity < min_solidity or
+           p.eccentricity > max_eccentricity or
+           p.equivalent_diameter_area < cell_min_diameter or
+           p.equivalent_diameter_area > cell_max_diameter):
+            cell_quality = 0.0
+
+        quality_metrics[i] = (cell_quality, i)
+
+        p.cell_quality = cell_quality
 
     # TODO itemgetter might be faster then a lambda
     # https://stackoverflow.com/a/10695158
