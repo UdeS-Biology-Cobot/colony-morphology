@@ -273,7 +273,9 @@ if __name__=="__main__":
 
         p.cell_quality = quality_metrics[i][0]
 
-    reverse_metrics = sorted(quality_metrics, key=lambda x: (-x[0], x[1]))
+    # TODO itemgetter might be faster then a lambda
+    # https://stackoverflow.com/a/10695158
+    reverse_metrics = sorted(quality_metrics, key=lambda x: x[0], reverse=True)
 
 
     # print algorithm process time, excluding plotting
