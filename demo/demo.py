@@ -240,6 +240,11 @@ if __name__=="__main__":
             p.compactness = compute_compactness(p.area, p.perimeter)
 
 
+    # Remove every properties that have a perimeter of zero
+    properties[:] = [p for p in properties if p["compactness"] > 0.0]
+    print(f'Region properties, after removing small objects = {len(properties)}')
+
+
     # Compute axes_closness
     for p in properties:
         p.axes_closness = compute_axes_closness(p.axis_major_length, p.axis_minor_length)
