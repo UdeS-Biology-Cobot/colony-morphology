@@ -35,7 +35,7 @@ if __name__=="__main__":
     parser.add_argument("--image_path", required=True, type=str)
     parser.add_argument("--dish_radius", required=True, type=float)
     parser.add_argument("--dish_inner_offset", required=False, type=float, default=0)
-    parser.add_argument("--cell_min_radius", required=True, type=int)
+    parser.add_argument("--cell_min_radius", required=False, type=int, default=0)
     parser.add_argument("--cell_max_radius", required=False, type=int, default=sys.maxsize)
     parser.add_argument("--number_of_cells", required=False, type=int, default=15)
     args = parser.parse_args()
