@@ -2,8 +2,9 @@
 from colony_morphology.geometry import *
 from colony_morphology.image_transform import *
 from colony_morphology.plotting import plot_bboxes, plot_region_roperties
-from colony_morphology.skimage_util import compactness, min_distance_nn, cell_quality
+from colony_morphology.skimage_util import compactness, min_distance_nn, cell_quality, axes_closness
 from colony_morphology.metric import compactness as compute_compactness
+from colony_morphology.metric import axes_closness as compute_axes_closness
 
 import argparse
 import cv2 as cv
@@ -222,7 +223,7 @@ if __name__=="__main__":
     start = time.time()
 
     # add extra properties, some function must be populated afterwards
-    extra_callbacks = (compactness, min_distance_nn, cell_quality)
+    extra_callbacks = (compactness, min_distance_nn, cell_quality, axes_closness)
 
     properties = regionprops(img_labels, intensity_image=img_cropped, extra_properties=extra_callbacks)
 
@@ -237,6 +238,11 @@ if __name__=="__main__":
             p.compactness = 0.0
         else:
             p.compactness = compute_compactness(p.area, p.perimeter)
+
+
+    # Compute axes_closness
+    for p in properties:
+        p.axes_closness = compute_axes_closness(p.axis_major_length, p.axis_minor_length)
 
 
     # Find the nearest neighbors with ckDTree
@@ -387,7 +393,14 @@ if __name__=="__main__":
 
     # Plot region properties interactively
     if (plot_interactive_properties):
-        property_names = ['area', 'eccentricity', 'perimeter', 'solidity', 'compactness', 'min_distance_nn', 'cell_quality']
+        property_names = ['area',
+                          'eccentricity',
+                          'perimeter',
+                          'solidity',
+                          'compactness',
+                          'axes_closness',
+                          'min_distance_nn',
+                          'cell_quality']
 
         print("Generating region properties interactively plot, this may take some time...")
         plot_region_roperties(img_original_cropped, img_labels, properties, property_names)
@@ -419,39 +432,40 @@ if __name__=="__main__":
     if(save_properties):
         # Must recompute to have new metrics...
         prop_names = ('label',
-                     'cell_quality',    # custom metric
-                     'compactness',     # custom metric
-                     'min_distance_nn', # custom metric
-                     'area',
-                     'area_bbox',
-                     'area_convex',
-                     'area_filled',
-                     'axis_major_length',
-                     'axis_minor_length',
-                     'bbox',
-                     'centroid',
-                     'centroid_local',
-                     'coords',
-                     'eccentricity',
-                     'equivalent_diameter_area',
-                     'euler_number',
-                     'extent',
-                     'feret_diameter_max',
-                     'image',
-                     'image_convex',
-                     'image_filled',
-                     'inertia_tensor',
-                     'inertia_tensor_eigvals',
-                     'label',
-                     'moments',
-                     'moments_central',
-                     'moments_hu',
-                     'moments_normalized',
-                     'orientation',
-                     'perimeter',
-                     'perimeter_crofton',
-                     'slice',
-                     'solidity',)
+                      'cell_quality',    # custom metric
+                      'compactness',     # custom metric
+                      'min_distance_nn', # custom metric
+                      'axes_closness',   # custom metric
+                      'area',
+                      'area_bbox',
+                      'area_convex',
+                      'area_filled',
+                      'axis_major_length',
+                      'axis_minor_length',
+                      'bbox',
+                      'centroid',
+                      'centroid_local',
+                      'coords',
+                      'eccentricity',
+                      'equivalent_diameter_area',
+                      'euler_number',
+                      'extent',
+                      'feret_diameter_max',
+                      'image',
+                      'image_convex',
+                      'image_filled',
+                      'inertia_tensor',
+                      'inertia_tensor_eigvals',
+                      'label',
+                      'moments',
+                      'moments_central',
+                      'moments_hu',
+                      'moments_normalized',
+                      'orientation',
+                      'perimeter',
+                      'perimeter_crofton',
+                      'slice',
+                      'solidity',)
 
         props = measure.regionprops_table(img_labels, intensity_image=img_cropped,
                                           properties=prop_names,
@@ -464,6 +478,7 @@ if __name__=="__main__":
             props["compactness"][i] = p.compactness
             props["min_distance_nn"][i] = p.min_distance_nn
             props["cell_quality"][i] = p.cell_quality
+            props["axes_closness"][i] = p.axes_closness
 
 
         df = pd.DataFrame(props)

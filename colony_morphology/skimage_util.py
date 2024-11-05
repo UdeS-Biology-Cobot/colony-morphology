@@ -14,6 +14,9 @@ def min_distance_nn(regionmask):
 def cell_quality(region_mask):
     return 0.0
 
+def axes_closness(region_mask):
+    return 0.0
+
 def custom1(regionmask):
     return 0.0
 

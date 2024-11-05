@@ -27,3 +27,14 @@ def compactness(area, perimeter):
         The compactness metric.
     """
     return 4*math.pi*area / (perimeter*perimeter)
+
+
+
+def axes_closness(axis_major_length, axis_minor_length):
+    """
+    Distance equality: closer to one when axes are equal.
+    """
+    if(axis_major_length > axis_minor_length):
+        return axis_minor_length / axis_major_length
+    else:
+        return axis_major_length / axis_minor_length
