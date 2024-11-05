@@ -260,7 +260,6 @@ if __name__=="__main__":
     # Compute metric for best colonies
     # Defined as:
     #     max distance from nn * area * (1 - eccentricity)
-    quality_metrics = []
     quality_metrics = np.empty(len(properties), dtype=object)
     for i in range(0, len(properties)):
         p = properties[i]
