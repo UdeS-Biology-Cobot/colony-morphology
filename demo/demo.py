@@ -106,8 +106,6 @@ if __name__=="__main__":
     img_masked = np.copy(img)
     img_masked[idx] = 255; # make mask white to lower the size of fake region properties found
 
-    diameter += 2*dish_offset_radius
-
     x_min = int(centroid[0]-diameter/2)
     x_max = int(centroid[0]+diameter/2)
     y_min = int(centroid[1]-diameter/2)
