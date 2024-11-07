@@ -2,7 +2,7 @@
 from colony_morphology.geometry import *
 from colony_morphology.image_transform import *
 from colony_morphology.plotting import plot_bboxes, plot_region_roperties
-from colony_morphology.skimage_util import compactness, min_distance_nn, cell_quality, axes_closness
+from colony_morphology.skimage_util import compactness, min_distance_nn, cell_quality, axes_closness, regionprops_to_dict
 from colony_morphology.metric import compactness as compute_compactness
 from colony_morphology.metric import axes_closness as compute_axes_closness
 
@@ -463,12 +463,12 @@ if __name__=="__main__":
             f.write(imgdata.read())
 
     if(save_properties):
-        # Must recompute to have new metrics...
+        # select properties included in the table
         prop_names = ('label',
-                      'cell_quality',    # custom metric
-                      'compactness',     # custom metric
-                      'min_distance_nn', # custom metric
-                      'axes_closness',   # custom metric
+                      'cell_quality',    # custom
+                      'compactness',     # custom
+                      'min_distance_nn', # custom
+                      'axes_closness',   # custom
                       'area',
                       'area_bbox',
                       'area_convex',
@@ -478,7 +478,10 @@ if __name__=="__main__":
                       'bbox',
                       'centroid',
                       'centroid_local',
+                      'centroid_weighted',
+                      'centroid_weighted_local',
                       'coords',
+                      'coords_scaled',
                       'eccentricity',
                       'equivalent_diameter_area',
                       'euler_number',
@@ -487,32 +490,30 @@ if __name__=="__main__":
                       'image',
                       'image_convex',
                       'image_filled',
+                      'image_intensity',
                       'inertia_tensor',
                       'inertia_tensor_eigvals',
+                      'intensity_max',
+                      'intensity_mean',
+                      'intensity_min',
+                      # 'intensity_std',
                       'label',
                       'moments',
                       'moments_central',
                       'moments_hu',
                       'moments_normalized',
+                      'moments_weighted',
+                      'moments_weighted_central',
+                      'moments_weighted_hu',
+                      'moments_weighted_normalized',
+                      'num_pixels',
                       'orientation',
                       'perimeter',
                       'perimeter_crofton',
                       'slice',
                       'solidity',)
 
-        props = measure.regionprops_table(img_labels, intensity_image=img_cropped,
-                                          properties=prop_names,
-                                          extra_properties=extra_callbacks)
+        props_dict = regionprops_to_dict(properties, prop_names)
 
-        # add metrics to props
-        for i in range(0, len(properties)):
-            p = properties[i]
-
-            props["compactness"][i] = p.compactness
-            props["min_distance_nn"][i] = p.min_distance_nn
-            props["cell_quality"][i] = p.cell_quality
-            props["axes_closness"][i] = p.axes_closness
-
-
-        df = pd.DataFrame(props)
+        df = pd.DataFrame(props_dict)
         df.to_excel(path + '/region_properties.xlsx', index=False)
