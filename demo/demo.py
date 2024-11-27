@@ -316,15 +316,15 @@ if __name__=="__main__":
     area_std = statistics.pstdev(p["area"] for p in properties if p.cell_quality > 0.0)
     area_mean = statistics.mean(p["area"] for p in properties if p.cell_quality > 0.0)
 
-    print(area_std)
-    print(area_mean)
-    print(area_mean - 1.5* area_std)
-    print(area_mean + 1.5* area_std)
+    # print(area_std)
+    # print(area_mean)
+    # print(area_mean - 1.5* area_std)
+    # print(area_mean + 1.5* area_std)
     for i in range(0, len(properties)):
         p = properties[i]
         if (p.area < area_mean - 1.5* area_std or
             p.area > area_mean + 1.5* area_std):
-            print(f'label {p.label} discarded due to being below std')
+            # print(f'label {p.label} discarded due to being below std')
             p.cell_quality = 0.0
             quality_metrics[i] = (p.cell_quality, i)
 
