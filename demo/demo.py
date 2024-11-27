@@ -433,7 +433,7 @@ if __name__=="__main__":
 
         # plt.figure(dpi=1200)
         if(save_pictures):
-            plt.savefig(imgdata, format='png')
+            plt.savefig(imgdata, format='png', bbox_inches='tight')
             imgdata.seek(0) # rewind the data
 
 
