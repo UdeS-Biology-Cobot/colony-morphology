@@ -22,6 +22,7 @@ from skimage.filters import try_all_threshold, threshold_yen, threshold_otsu, th
 from skimage.measure import regionprops, regionprops_table, label
 from skimage.segmentation import watershed
 from numpy.linalg import norm
+import statistics
 import sys
 import time
 
@@ -227,7 +228,7 @@ if __name__=="__main__":
     # add extra properties, some function must be populated afterwards
     extra_callbacks = (compactness, min_distance_nn, cell_quality, axes_closness)
 
-    properties = regionprops(img_labels, intensity_image=img_cropped, extra_properties=extra_callbacks)
+    properties = regionprops(img_labels, intensity_image=img_gray, extra_properties=extra_callbacks)
 
     end = time.time()
     print(f'[{end-start:g} seconds]')
@@ -494,7 +495,7 @@ if __name__=="__main__":
                       'intensity_max',
                       'intensity_mean',
                       'intensity_min',
-                      # 'intensity_std',
+                      'intensity_std',
                       'label',
                       'moments',
                       'moments_central',
