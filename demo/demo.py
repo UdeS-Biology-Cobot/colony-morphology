@@ -292,9 +292,10 @@ if __name__=="__main__":
         eccentricity = 1.0 - p.eccentricity
 
         # compute quality metric
-        cell_quality = (1.0  * area +
+        cell_quality = (2.0  * area +
                         2.0  * min_distance_nn +
                         1.0  * compactness +
+                        # 2.0 * p.axes_closness +
                         0.25 * eccentricity +
                         1.0  * p.solidity) / 5.0
 
