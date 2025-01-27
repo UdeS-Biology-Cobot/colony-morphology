@@ -5,31 +5,34 @@ import inspect
 #      At this stage, these metrics cannot be computed as they rely on other metrics.
 #      It is up to the user to overwrite these fields afterwards.
 
-def compactness(regionmask):
+def compactness_cb(regionmask):
     return 0.0
 
-def min_distance_nn(regionmask):
+def nn_centroid_distance_cb(regionmask):    # nearest neighbor wrt. centroids
     return 0.0
 
-def cell_quality(region_mask):
+def nn_collision_distance_cb(regionmask):   # distance between edges of radius, taken from the equivalent diameter area property
     return 0.0
 
-def axes_closness(region_mask):
+def cell_quality_cb(region_mask):
     return 0.0
 
-def custom1(regionmask):
+def axes_closness_cb(region_mask):
     return 0.0
 
-def custom2(regionmask):
+def custom1_cb(regionmask):
     return 0.0
 
-def custom3(regionmask):
+def custom2_cb(regionmask):
     return 0.0
 
-def custom4(regionmask):
+def custom3_cb(regionmask):
     return 0.0
 
-def custom5(regionmask):
+def custom4_cb(regionmask):
+    return 0.0
+
+def custom5_cb(regionmask):
     return 0.0
 
 # Excluding Intensity metrics
