@@ -121,7 +121,16 @@ def plot_region_roperties(image, labels, properties, property_names):
         y, x = contour.T
         hoverinfo = ''
         for prop_name in property_names:
-            hoverinfo += f'<b>{prop_name}: {getattr(properties[index], prop_name):.2f}</b><br>'
+            attr = getattr(properties[index], prop_name)
+            if isinstance(attr, bool):
+                hoverinfo += f'<b>{prop_name}: {(attr)}</b><br>'
+            elif isinstance(attr, str):
+                indent = '    '
+                count = attr.count("\n")
+                attr = attr.replace('\n', f'<br>{indent}', count - 1)
+                hoverinfo += f'<b>{prop_name}: <br>{indent}{attr}</b><br>'
+            else:
+                hoverinfo += f'<b>{prop_name}: {(attr):.2f}</b><br>'
         fig.add_trace(
             go.Scatter(
                 x=x,
