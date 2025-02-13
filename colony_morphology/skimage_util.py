@@ -17,6 +17,12 @@ def nn_collision_distance(regionmask):   # distance between edges of radius, tak
 def cell_quality(region_mask):
     return 0.0
 
+def discarded(region_mask):
+    return False
+
+def discarded_description(regionmask):
+    return ''
+
 def axes_closness(region_mask):
     return 0.0
 
