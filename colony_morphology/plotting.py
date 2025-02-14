@@ -128,7 +128,10 @@ def plot_region_roperties(image, labels, properties, property_names):
                 indent = '    '
                 count = attr.count("\n")
                 attr = attr.replace('\n', f'<br>{indent}', count - 1)
-                hoverinfo += f'<b>{prop_name}: <br>{indent}{attr}</b><br>'
+                if attr:
+                    hoverinfo += f'<b>{prop_name}: <br>{indent}{attr}</b><br>'
+                else:
+                    hoverinfo += f'<b>{prop_name}: {attr}</b><br>'
             else:
                 hoverinfo += f'<b>{prop_name}: {(attr):.2f}</b><br>'
         fig.add_trace(
