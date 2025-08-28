@@ -573,7 +573,6 @@ if __name__=="__main__":
             axd['I'].set_title('Best Cell\'s')
             axd['I'].set_axis_off()
 
-        plt.tight_layout()
         plt.savefig(f"{output_path}/segmentation.png")
 
 
