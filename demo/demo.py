@@ -1,15 +1,8 @@
 #!/usr/bin/env python3
 from colony_morphology.geometry import *
 from colony_morphology.image_transform import *
-from colony_morphology.plotting import plot_bboxes, plot_region_roperties
-from colony_morphology.skimage_util import compactness as compactness_cb
-from colony_morphology.skimage_util import nn_centroid_distance as nn_centroid_distance_cb
-from colony_morphology.skimage_util import nn_collision_distance as nn_collision_distance_cb
-from colony_morphology.skimage_util import cell_quality as cell_quality_cb
-from colony_morphology.skimage_util import axes_closness as axes_closness_cb
-from colony_morphology.skimage_util import discarded as discarded_cb
-from colony_morphology.skimage_util import discarded_description as discarded_description_cb
-from colony_morphology.skimage_util import regionprops_to_dict
+from colony_morphology.plotting import plot_region_roperties
+from colony_morphology import regionprops_util as cb
 from skimage.io import imsave
 
 from colony_morphology.metric import compactness as compute_compactness
@@ -19,23 +12,18 @@ from scipy.optimize import leastsq
 
 import argparse
 import cv2 as cv
-from io import BytesIO
 import numpy as np
-import matplotlib
 from matplotlib import pyplot as plt
 import os
 import pandas as pd
 from scipy import ndimage as ndi
 from scipy.spatial import cKDTree
-from skimage import color, io, morphology
 from skimage.feature import peak_local_max
-from skimage.filters import try_all_threshold, threshold_yen, threshold_otsu, threshold_local
-from skimage.measure import regionprops, regionprops_table, label
+from skimage.measure import regionprops
 from skimage.segmentation import watershed
 from skimage.transform import hough_circle, hough_circle_peaks, rescale
-from skimage.draw import circle_perimeter, circle_perimeter_aa, line
+from skimage.draw import circle_perimeter
 from skimage.util import img_as_ubyte
-from numpy.linalg import norm
 import statistics
 import sys
 import time
@@ -319,13 +307,13 @@ if __name__=="__main__":
     # Generate metrics from labels
     # 9a- Add extra properties, some function must be populated afterwards
     print('Computing region properties...')
-    extra_callbacks = (compactness_cb,
-                       nn_collision_distance_cb,
-                       nn_centroid_distance_cb,
-                       cell_quality_cb,
-                       discarded_cb,
-                       discarded_description_cb,
-                       axes_closness_cb)
+    extra_callbacks = (cb.compactness,
+                       cb.nn_collision_distance,
+                       cb.nn_centroid_distance,
+                       cb.cell_quality,
+                       cb.discarded,
+                       cb.discarded_description,
+                       cb.axes_closness)
 
     # 9b- Measure properties of labelled image regions
     properties = regionprops(img_labels, intensity_image=img_gray, extra_properties=extra_callbacks)
@@ -661,7 +649,7 @@ if __name__=="__main__":
                       'solidity',)
 
         # Generate dictionary of properties
-        props_dict = regionprops_to_dict(properties, prop_names)
+        props_dict = cb.regionprops_to_dict(properties, prop_names)
 
         # Find the max length of string metrics, e.g. with 'discarded_description'
         max_description_size = 0
