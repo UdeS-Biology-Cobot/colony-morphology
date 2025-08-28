@@ -1,9 +1,68 @@
 import numpy as np
 import shapely
 from skimage import measure
-from skimage.draw import disk
+from skimage.draw import disk, line
 from skimage.feature import canny
 from skimage.transform import hough_circle, hough_circle_peaks
+
+# Fit Circle Through New Points
+def circle_residuals(params, points):
+    x0, y0, r = params
+    return np.sqrt((points[:, 0] - x0) ** 2 + (points[:, 1] - y0) ** 2) - r
+
+def find_brightest_with_dark_neighbor(image, points, center, threshold=200, search_distance=20):
+    """
+    Find the brightest pixel along the line from each perimeter point to the center and in the opposite direction.
+
+    Args:
+        image (ndarray): Grayscale image.
+        points (ndarray): Array of (x, y) coordinates of perimeter points.
+        center (tuple): (x, y) coordinates of the center point.
+        threshold (int, optional): Brightness threshold to identify bright pixels. Default is 200.
+        search_distance (int, optional): Maximum distance to search along the line.
+
+    Returns:
+        list: List of tuples (x, y) of valid bright pixels.
+    """
+    bright_points = []  # Store valid bright pixels
+
+    for x, y in points:
+        # Get the line between the perimeter point and the center
+        rr_to_center, cc_to_center = line(int(y), int(x), int(center[1]), int(center[0]))
+
+        # Calculate the opposite direction (away from center)
+        away_x = int(x + (x - center[0]))
+        away_y = int(y + (y - center[1]))
+        rr_away, cc_away = line(int(y), int(x), int(away_y), int(away_x))
+
+        found_points = []  # Store potential bright points
+        for rr, cc in [(rr_to_center, cc_to_center), (rr_away, cc_away)]:
+            # Limit the search to the specified distance
+            search_limit = min(len(rr), search_distance)
+
+            # Iterate through the line points up to search_distance
+            for i in range(search_limit):
+                ny, nx = rr[i], cc[i]
+
+                # Check if within valid bounds and meets the threshold
+                if 0 <= nx < image.shape[1] and 0 <= ny < image.shape[0] and image[ny, nx] >= threshold:
+                    found_points.append((nx, ny))
+                    break  # Stop searching after finding the first valid pixel
+
+        # Select the point furthest from the center if both directions found points
+        if len(found_points) == 2:
+            dist1 = np.sqrt((found_points[0][0] - center[0]) ** 2 + (found_points[0][1] - center[1]) ** 2)
+            dist2 = np.sqrt((found_points[1][0] - center[0]) ** 2 + (found_points[1][1] - center[1]) ** 2)
+
+            # Choose the one further away from the center
+            chosen_point = found_points[0] if dist1 > dist2 else found_points[1]
+            bright_points.append(chosen_point)
+
+        # If only one point is found, use it
+        elif len(found_points) == 1:
+            bright_points.append(found_points[0])
+
+    return bright_points
 
 
 def create_circlular_mask(shape, centroid, radius, shrink_ratio=1, scale=1):
@@ -17,7 +76,6 @@ def create_circlular_mask(shape, centroid, radius, shrink_ratio=1, scale=1):
     c_mask = mesh_x ** 2 + mesh_y ** 2 <= (shrink_ratio*inv_scale*radius) ** 2
 
     return c_mask
-
 
 # https://github.com/morris-lab/Colony-counter
 def detect_circle_by_canny(image_bw, radius=395, n_peaks=20):
