@@ -502,7 +502,7 @@ if __name__=="__main__":
         if len(reverse_metrics_slice) != 0:
             result_img = img_original_cropped.copy()[:, :, ::-1]
 
-            dpi_value = 100
+            dpi_value = 300
             height, width = result_img.shape[:2]
 
             fig, ax = plt.subplots()
@@ -514,13 +514,12 @@ if __name__=="__main__":
             for metric in reverse_metrics_slice:
                 p = properties[metric[1]]
 
-                diameter = p["equivalent_diameter_area"]
+                radius = p["equivalent_diameter_area"] / 2.0 + 5.0
                 centroid_local = [p.centroid[0], p.centroid[1]]
 
                 point = (0,0)
                 point = (centroid_local[1], centroid_local[0])
 
-                radius = diameter/2.0
                 circle = plt.Circle(point, radius=radius, fc='none', color='red')
                 ax.add_patch(circle)
                 ax.annotate(index, xy=(point[0]+radius, point[1]-radius), color='red')
