@@ -122,8 +122,8 @@ if __name__=="__main__":
 
     # Read image
     print(f'Reading image from: {absolute_path}')
-    img = cv.imread(image_path)
-    assert img is not None, "File could not be read, check with os.path.exists()"
+    img_bgr = cv.imread(image_path)
+    assert img_bgr is not None, "File could not be read, check with os.path.exists()"
 
     # Compute total algorithm processingtime, excluding plotting
     global_time = 0
@@ -131,7 +131,7 @@ if __name__=="__main__":
 
 
     # 1- Convert to grayscale
-    img_gray = cv.cvtColor(img, cv.COLOR_RGB2GRAY)
+    img_gray = cv.cvtColor(img_bgr, cv.COLOR_BGR2GRAY)
 
     # Mask image to contain only the petri dish
     # 1a- Rescale the image to reduce memory usage
@@ -193,7 +193,7 @@ if __name__=="__main__":
     if save_circle_detection:
         # # wrt. resized image
         # dummy, img_circle_detection = resize_image(img, pixel_threshold=pixel_threshold)
-        img_circle_detection = rescale(img, scale=scale, anti_aliasing=True, channel_axis=-1)
+        img_circle_detection = rescale(img_bgr, scale=scale, anti_aliasing=True, channel_axis=-1)
         img_circle_detection = np.copy(img_circle_detection)
 
 
@@ -209,10 +209,10 @@ if __name__=="__main__":
         rescaled_image_with_circle_uint8 = img_as_ubyte(img_circle_detection)
 
 
-        imsave(f'{output_path}/circle_detection_scaled.png', rescaled_image_with_circle_uint8)
+        imsave(f'{output_path}/circle_detection_scaled.png', rescaled_image_with_circle_uint8[:, :, ::-1])
 
         # wrt. original image
-        img_circle_detection = img.copy()
+        img_circle_detection = img_bgr.copy()
         # Draw red perimiter (after rescaling to normal)
         # circy, circx = circle_perimeter(int(cy_corrected),
         #                                 int(cx_corrected),
@@ -241,7 +241,7 @@ if __name__=="__main__":
         for point in adjusted_points_np:
             img_circle_detection[int(point[1]), int(point[0])] = (0, 0, 255)
 
-        imsave(f'{output_path}/circle_detection_original.png', img_circle_detection)
+        imsave(f'{output_path}/circle_detection_original.png', img_circle_detection[:, :, ::-1])
 
     # 1d- Scale centroid and radius back to original image
     centroid = (cy_adjusted, cx_adjusted)
@@ -255,7 +255,7 @@ if __name__=="__main__":
 
     # 1f- Mask original image
     idx = (circular_mask== False)
-    img_masked = np.copy(img)
+    img_masked = np.copy(img_bgr)
     img_masked[idx] = 0; # black
 
     # 1g- Crop image
@@ -274,11 +274,11 @@ if __name__=="__main__":
         y_max = img_masked.shape[1]
 
     img_cropped = img_masked[x_min:x_max, y_min:y_max]
-    img_original_cropped = img[x_min:x_max, y_min:y_max]
+    img_original_cropped = img_bgr[x_min:x_max, y_min:y_max]
     circular_mask_threshold = circular_mask_threshold[x_min:x_max, y_min:y_max]
 
     # 2- Convert to grayscale
-    img_gray = cv.cvtColor(img_cropped, cv.COLOR_RGB2GRAY)
+    img_gray = cv.cvtColor(img_cropped, cv.COLOR_BGR2GRAY)
 
     # 3- Blur image
     img_blur = cv.GaussianBlur(img_gray, (7, 7), 0)
@@ -500,7 +500,7 @@ if __name__=="__main__":
     ax_annotation = None
     if save_cell_annotation:
         if len(reverse_metrics_slice) != 0:
-            result_img = img_original_cropped.copy()
+            result_img = img_original_cropped.copy()[:, :, ::-1]
 
             dpi_value = 100
             height, width = result_img.shape[:2]
@@ -548,7 +548,7 @@ if __name__=="__main__":
         fig, axd = plt.subplot_mosaic(layout, constrained_layout=True, dpi=300)
 
 
-        axd['A'].imshow(img_original_cropped)
+        axd['A'].imshow(img_original_cropped[:, :, ::-1])
         axd['A'].set_title('Crop')
         axd['A'].set_axis_off()
 
@@ -591,7 +591,7 @@ if __name__=="__main__":
 
 
         # save as images
-        imsave(f'{output_path}/crop.png', img_original_cropped)
+        imsave(f'{output_path}/crop.png', img_original_cropped[:, :, ::-1])
         imsave(f'{output_path}/mask.png', img_gray)
         imsave(f'{output_path}/threshold.png', img_threshold)
         imsave(f'{output_path}/filter.png', img_mask_artifacts)
