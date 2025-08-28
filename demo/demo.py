@@ -2,9 +2,20 @@
 from colony_morphology.geometry import *
 from colony_morphology.image_transform import *
 from colony_morphology.plotting import plot_bboxes, plot_region_roperties
-from colony_morphology.skimage_util import compactness, min_distance_nn, cell_quality, axes_closness, regionprops_to_dict
+from colony_morphology.skimage_util import compactness as compactness_cb
+from colony_morphology.skimage_util import nn_centroid_distance as nn_centroid_distance_cb
+from colony_morphology.skimage_util import nn_collision_distance as nn_collision_distance_cb
+from colony_morphology.skimage_util import cell_quality as cell_quality_cb
+from colony_morphology.skimage_util import axes_closness as axes_closness_cb
+from colony_morphology.skimage_util import discarded as discarded_cb
+from colony_morphology.skimage_util import discarded_description as discarded_description_cb
+from colony_morphology.skimage_util import regionprops_to_dict
+from skimage.io import imsave
+
 from colony_morphology.metric import compactness as compute_compactness
 from colony_morphology.metric import axes_closness as compute_axes_closness
+
+from scipy.optimize import leastsq
 
 import argparse
 import cv2 as cv
@@ -21,6 +32,9 @@ from skimage.feature import peak_local_max
 from skimage.filters import try_all_threshold, threshold_yen, threshold_otsu, threshold_local
 from skimage.measure import regionprops, regionprops_table, label
 from skimage.segmentation import watershed
+from skimage.transform import hough_circle, hough_circle_peaks, rescale
+from skimage.draw import circle_perimeter, circle_perimeter_aa, line
+from skimage.util import img_as_ubyte
 from numpy.linalg import norm
 import statistics
 import sys
@@ -34,42 +48,77 @@ if __name__=="__main__":
     )
 
     parser.add_argument("--image_path", required=True, type=str)
-    parser.add_argument("--dish_radius", required=True, type=float)
-    parser.add_argument("--dish_inner_offset", required=False, type=float, default=0)
-    parser.add_argument("--cell_min_radius", required=False, type=int, default=0)
-    parser.add_argument("--cell_max_radius", required=False, type=int, default=sys.maxsize)
-    parser.add_argument("--number_of_cells", required=False, type=int, default=15)
+    parser.add_argument("--dish_diameter", required=True, type=float)
+    parser.add_argument("--dish_offset", required=False, type=float, default=0)
+    parser.add_argument("--cell_min_diameter", required=False, type=int, default=0)
+    parser.add_argument("--cell_max_diameter", required=False, type=int, default=sys.maxsize)
+    parser.add_argument("--max_cells", required=False, type=int, default=15)
     args = parser.parse_args()
 
     # Parameters
     image_path = args.image_path
-    dish_radius = args.dish_radius
-    dish_offset_radius =  args.dish_inner_offset
-    cell_min_radius = args.cell_min_radius
-    cell_max_radius = args.cell_max_radius
-    number_of_cells_to_pick = args.number_of_cells
+    dish_diameter = args.dish_diameter
+    dish_offset =  args.dish_offset
+    cell_min_diameter = args.cell_min_diameter
+    cell_max_diameter = args.cell_max_diameter
+    max_cells = args.max_cells
 
-    min_compactness = 0.6
-    min_solidity = 0.85
-    max_eccentricity = 0.8
+    weight_area = 2.0                   # Area of the region i.e. number of pixels of the region scaled by pixel-area
+    weight_compactness = 1.0            # Ratio of the area of an object to the area of a circle with the same perimeter
+    weight_eccentricity = 0.25          # Eccentricity of the ellipse that has the same second-moments as the region
+    weight_nn_collision_distance = 2.0  # Nearest neighbor distance [pixel]
+    weight_solidity = 1.0               # Ratio of pixels in the region to pixels of the convex hull image
+
+    # nearest neighbor
+    nn_query_size = 10  # Return X nearest neighbor's from the centroid tree query, min = 1
+                        # A higher number will lead to a better aproximation of the collision distance
+
+
+    # Discard cells based on Threshold, set to 0 to disable
+    cell_min_compactness = 0.6      # discard if < min_compactness [pixel]
+    cell_min_solidity = 0.85        # discard if < min_solidity [pixel]
+    cell_max_eccentricity = 0.8     # discard if > max_eccentricity [pixel]
+
+    # Discard cells based on Statistics, set to 0 to disable
+    # The mean and std are computed on non discarded cell's (after passing through the Threshold filtering)
+    std_weight_diameter = 3   # 1 = Keep 68.27% of cell's between mu -1*sigma and mu + 1*sigma
+                                # 2 = Keep 95.45% of cell's between mu -2*sigma and mu + 2*sigma
+                                # 3 = Keep 99.73% of cell's between mu -3*sigma and mu + 3*sigma
+
+    # Morphological cleanup for high-res masks: when adaptive thresholding isn’t perfect,
+    # an elliptical closing fills tiny gaps/holes and a small opening removes speckle noise.
+    # (Ellipse matches round colonies; tune sizes to your imaging scale.)
+    kernel_close = cv.getStructuringElement(cv.MORPH_ELLIPSE,(1,1))
+    kernel_open = cv.getStructuringElement(cv.MORPH_ELLIPSE,(1,1))
 
     absolute_path = image_path
     if (not os.path.isabs(image_path)):
         absolute_path = os.path.join(os.getcwd(), image_path)
 
 
-    plot_petri_process = True
-    plot_all_threshold = True
-    plot_segmentation_process = False
-    plot_cell_annotation = True
-    plot_interactive_properties = False
-    save_pictures = False
-    save_properties = False
+    save_circle_detection = True      # subplot of circle detection algorithm [png]
+    save_segmentation_process = True  # subplot of all the segmentation (after circle detection) [png]
+    save_cell_annotation = True       # annotated cell wrt. the cell_quality metric [png]
+    save_properties = True           # metrics of region properties [xlsx]
 
-    cell_min_diameter = cell_min_radius * 2.0
-    cell_max_diameter = cell_max_radius * 2.0
+    plot_interactive_properties = True  # plot cell properties on a web client, web page will open automatically
 
-    matplotlib.rcParams['savefig.dpi'] = 300
+
+    output_path = os.path.join(os.getcwd(), "result/")
+    output_path += time.strftime("%Y-%m-%d_%H-%M-%S") #avoid name clash
+
+    if(save_circle_detection or save_segmentation_process or save_cell_annotation or save_properties):
+        # Create the directory
+        try:
+            os.mkdir(output_path)
+            print(f'Saving images to: {output_path}')
+        except FileExistsError:
+            print(f"Directory '{output_path}' already exists.")
+        except PermissionError:
+            print(f"Permission denied: Unable to create '{output_path}'.")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+
 
     # Read image
     print(f'Reading image from: {absolute_path}')
@@ -80,37 +129,140 @@ if __name__=="__main__":
     global_time = 0
     global_start = time.time()
 
-    # Convert to grayscale
-    img_gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
+    # 1- Convert to grayscale
+    img_gray = cv.cvtColor(img, cv.COLOR_RGB2GRAY)
 
     # Mask image to contain only the petri dish
-    # 1- resize image to speedup detection
-    scale, img_resize = resize_image(img_gray, pixel_threshold=1280*1280)
+    # 1a- Rescale the image to reduce memory usage
+    scale = 0.25  # Reduce image size by 75%
+    rescaled_gray = rescale(img_gray, scale=scale, anti_aliasing=True)
 
-    # 2- detect circle radius + centroid
-    dish_regions = detect_area_by_canny(img_resize, radius=scale*dish_radius)
+    # 1b- Apply Canny edge detection on the rescaled image
+    edges_rescaled = canny(rescaled_gray, sigma=2)
 
-    region_prop = dish_regions[0]
-    centroid = region_prop["centroid"]
-    diameter = region_prop["equivalent_diameter_area"]
+    # 1c- Define possible circle radii for outermost circle
+    radius = (dish_diameter / 2.0)* scale
+    low = (radius - radius * 0.04)
+    high = (radius + radius * 0.04)
+    hough_radii_rescaled_large = np.arange(low, high, 2)  # Increased range for larger circles
+    hough_res_rescaled_large = hough_circle(edges_rescaled, hough_radii_rescaled_large)
 
-    centroid = tuple(c/scale for c in centroid)
-    diameter/=scale
-    diameter -= 2*dish_offset_radius
+    # 1d- Extract the most prominent circles
+    accums_large, cx_large, cy_large, radii_large = hough_circle_peaks(
+        hough_res_rescaled_large, hough_radii_rescaled_large, total_num_peaks=5
+    )
 
-    # 3- create circular mask
-    circular_mask = create_circlular_mask(img_gray.shape[::-1], centroid[::-1], diameter/2.0)
+    # 1e- Select the largest circle by radius
+    largest_circle_idx = np.argmax(radii_large)
+    cx_final, cy_final, radius_final = (
+        cx_large[largest_circle_idx],
+        cy_large[largest_circle_idx],
+        radii_large[largest_circle_idx],
+    )
 
-    # 4- mask orighinal image
+    # 1f- Scale circle properties back to original size
+    cx_corrected = cx_final / scale
+    cy_corrected = cy_final / scale
+    radius_corrected = radius_final / scale
+
+
+    # 1g- Generate 8 Equidistant Points Around Perimeter
+    theta_vals = np.linspace(0, 2 * np.pi, 9)[:-1]  # 8 points at 45-degree intervals
+    perimeter_points = np.array([
+        [cx_corrected + radius_corrected * np.cos(theta),
+         cy_corrected + radius_corrected * np.sin(theta)]
+        for theta in theta_vals
+    ])
+
+    # 1h- find brightest point along center point
+    center_point = (cx_corrected, cy_corrected)
+    adjusted_points = find_brightest_with_dark_neighbor(img_gray, perimeter_points, center_point, threshold=50, search_distance=5)
+    if(len(adjusted_points) != len(perimeter_points)):
+        adjusted_points = find_brightest_with_dark_neighbor(img_gray, perimeter_points, center_point, threshold=50, search_distance=30)
+
+    adjusted_points_np = np.array(adjusted_points)
+
+    # 1i- find adjusted centroid + radius
+    initial_guess = [cx_corrected, cy_corrected, radius_corrected]
+    new_params, _ = leastsq(circle_residuals, initial_guess, args=(adjusted_points_np,))
+    cx_adjusted, cy_adjusted, radius_adjusted = new_params
+
+
+    # Save circle detection picture
+    if save_circle_detection:
+        # # wrt. resized image
+        # dummy, img_circle_detection = resize_image(img, pixel_threshold=pixel_threshold)
+        img_circle_detection = rescale(img, scale=scale, anti_aliasing=True, channel_axis=-1)
+        img_circle_detection = np.copy(img_circle_detection)
+
+
+
+        circy, circx = circle_perimeter(int(cy_final),
+                                        int(cx_final),
+                                        int(radius_final),
+                                        shape=img_circle_detection.shape)
+        # Draw green perimeter
+        img_circle_detection[circy, circx] = (0, 255, 51)
+        img_circle_detection = np.clip(img_circle_detection, 0, 1)
+
+        rescaled_image_with_circle_uint8 = img_as_ubyte(img_circle_detection)
+
+
+        imsave(f'{output_path}/circle_detection_scaled.png', rescaled_image_with_circle_uint8)
+
+        # wrt. original image
+        img_circle_detection = img.copy()
+        # Draw red perimiter (after rescaling to normal)
+        # circy, circx = circle_perimeter(int(cy_corrected),
+        #                                 int(cx_corrected),
+        #                                 int(radius_corrected),
+        #                                 shape=img_circle_detection.shape)
+
+        # img_circle_detection[circy, circx] = (255, 0, 0)
+
+        # Draw green perimeter ()
+        circy, circx = circle_perimeter(int(cy_adjusted),
+                                        int(cx_adjusted),
+                                        int(radius_adjusted),
+                                        shape=img_circle_detection.shape)
+
+        img_circle_detection[circy, circx] = (0, 255, 51)
+
+        # Add tickness to perimiter
+        # for i in range(1, 4):
+        #     img_circle_detection[circy-i, circx] = (0, 255, 51)
+        #     img_circle_detection[circy+i, circx] = (0, 255, 51)
+        #     img_circle_detection[circy, circx-i] = (0, 255, 51)
+        #     img_circle_detection[circy, circx+i] = (0, 255, 51)
+
+
+        # Draw adjusted points
+        for point in adjusted_points_np:
+            img_circle_detection[int(point[1]), int(point[0])] = (0, 0, 255)
+
+        imsave(f'{output_path}/circle_detection_original.png', img_circle_detection)
+
+    # 1d- Scale centroid and radius back to original image
+    centroid = (cy_adjusted, cx_adjusted)
+    radius = radius_adjusted
+    radius_offset = radius - dish_offset   # apply offset
+
+
+    # 1e- Create circular masks
+    circular_mask = create_circlular_mask(img_gray.shape[::-1], centroid[::-1], radius_offset)
+    circular_mask_threshold = create_circlular_mask(img_gray.shape[::-1], centroid[::-1], radius_offset -8)
+
+    # 1f- Mask original image
     idx = (circular_mask== False)
     img_masked = np.copy(img)
-    img_masked[idx] = 255; # make mask white to lower the size of fake region properties found
+    img_masked[idx] = 0; # black
 
-    x_min = int(centroid[0]-diameter/2)
-    x_max = int(centroid[0]+diameter/2)
-    y_min = int(centroid[1]-diameter/2)
-    y_max = int(centroid[1]+diameter/2)
+    # 1g- Crop image
+    x_min = int(centroid[0]-radius_offset)
+    x_max = int(centroid[0]+radius_offset)
+    y_min = int(centroid[1]-radius_offset)
+    y_max = int(centroid[1]+radius_offset)
 
     if(x_min < 0):
         x_min = 0
@@ -121,120 +273,65 @@ if __name__=="__main__":
     if(y_max > img_masked.shape[1]):
         y_max = img_masked.shape[1]
 
-
-    # 5- crop image
     img_cropped = img_masked[x_min:x_max, y_min:y_max]
     img_original_cropped = img[x_min:x_max, y_min:y_max]
+    circular_mask_threshold = circular_mask_threshold[x_min:x_max, y_min:y_max]
 
+    # 2- Convert to grayscale
+    img_gray = cv.cvtColor(img_cropped, cv.COLOR_RGB2GRAY)
 
-    # Plot Petri process
-    if (plot_petri_process):
-        global_time += time.time() - global_start
-
-        print(f'Plotting petri process...')
-        start = time.time()
-
-        fig, axes = plt.subplots(ncols=3, nrows=1, sharex=True, sharey=True)
-        ax = axes.ravel()
-
-        ax[0].imshow(img_resize, cmap=plt.cm.gray)
-        ax[0].set_title(f'Image resized')
-        ax[1].imshow(circular_mask, cmap=plt.cm.gray)
-        ax[1].set_title(f'Circular mask')
-
-        ax[2].imshow(img_masked, cmap=plt.cm.gray)
-        ax[2].set_title(f'Image cropped')
-
-        for a in ax:
-            a.set_axis_off()
-
-        plt.tight_layout()
-
-        end = time.time()
-        print(f'[{end-start:g} seconds]')
-
-        plt.show()
-
-    global_start = time.time()
-
-    # Convert to grayscale
-    img_gray = cv.cvtColor(img_cropped, cv.COLOR_BGR2GRAY)
-
-    # Blur image
+    # 3- Blur image
     img_blur = cv.GaussianBlur(img_gray, (7, 7), 0)
 
+    # 4- Adaptive threshold
+    img_threshold = cv.adaptiveThreshold(img_blur, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 9, 2)
 
-    # plot all threshold algorithm's
-    if(plot_all_threshold):
-        fig, ax = try_all_threshold(img_blur, figsize=(10, 8), verbose=False)
-        plt.show()
-
-
-
-    # Apply threshold
-    # (thresh, img_bw) = cv.threshold(img_blur, 195, 255, cv.THRESH_BINARY_INV)
-    # (thresh, img_bw) = cv.threshold(img_blur, 0, 255, cv.THRESH_BINARY_INV | cv.THRESH_OTSU)
-    # img_bw = cv.adaptiveThreshold(img_blur, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 5, 2)
-    img_bw = cv.adaptiveThreshold(img_blur, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 9, 2)
+    # 5- Remove contour artifacts generated from adaptive threshold
+    img_mask_artifacts = img_threshold.copy()
+    idx = (circular_mask_threshold== False)
+    img_mask_artifacts[idx] = 0; # black
 
 
-    # fill smal holes
-    # https://stackoverflow.com/a/10317883
-    kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE,(9,9))
-    img_fill = cv.morphologyEx(img_bw,cv.MORPH_CLOSE,kernel)
+    # 6- Closing - dilation followed by erosion
+    # https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html
+    closing = cv.morphologyEx(img_mask_artifacts, cv.MORPH_CLOSE,kernel_close, iterations = 1)
 
+    # 7- Opening - erosion followed by dilation
+    # https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html
+    opening = cv.morphologyEx(closing, cv.MORPH_OPEN,kernel_open, iterations = 1)
 
-    # Noise removal
-    kernel = np.ones((3,3),np.uint8)
-    opening = cv.morphologyEx(img_fill,cv.MORPH_OPEN,kernel, iterations = 2)
-    img_bw = opening
-
-    # Noise removal
-    kernel = np.ones((3,3),np.uint8)
-    opening = cv.morphologyEx(img_bw,cv.MORPH_OPEN,kernel, iterations = 2)
-
-    # Sure background area
-    sure_bg = cv.dilate(opening,kernel,iterations=3)
-
-    # Finding sure foreground area
-    distance = cv.distanceTransform(opening,cv.DIST_L2,5)
-    ret, sure_fg = cv.threshold(distance,0.1*distance.max(),255,0)
-    sure_fg = np.uint8(sure_fg)     # Convert to int
-
-    # Now we want to separate the two objects in image
-    # Generate the markers as local maxima of the distance to the background
-    img_distance = np.empty(sure_fg.shape)
-    ndi.distance_transform_edt(sure_fg, distances=img_distance)
+    # Segmentation for separating different objects in an image
+    # 8a- Generate the markers as local maxima of the distance to the background
+    img_distance = np.empty(opening.shape)
+    ndi.distance_transform_edt(opening, distances=img_distance)
 
     # Segment image using watershed technique
     print('Computing watershed...')
-    start = time.time()
-
-    coords = peak_local_max(img_distance, footprint=np.ones((3, 3)), labels=sure_fg)
+    coords = peak_local_max(img_distance, footprint=np.ones((3, 3)), labels=opening)
     img_peak_mask = np.zeros(img_distance.shape, dtype=bool)
     img_peak_mask[tuple(coords.T)] = True
 
     markers = ndi.label(img_peak_mask)[0]
-    img_labels = watershed(img_distance, markers, mask=sure_fg, connectivity=1, compactness=0)
 
-    end = time.time()
-    print(f'[{end-start:g} seconds]')
-    print(f'    Created {len(img_labels)} labels')
+    # 8b- Watershed
+    img_labels = watershed(img_distance, markers, mask=opening, connectivity=1, compactness=0)
 
-    # Retrieve metric from labels
+    # Generate metrics from labels
+    # 9a- Add extra properties, some function must be populated afterwards
     print('Computing region properties...')
-    start = time.time()
+    extra_callbacks = (compactness_cb,
+                       nn_collision_distance_cb,
+                       nn_centroid_distance_cb,
+                       cell_quality_cb,
+                       discarded_cb,
+                       discarded_description_cb,
+                       axes_closness_cb)
 
-    # add extra properties, some function must be populated afterwards
-    extra_callbacks = (compactness, min_distance_nn, cell_quality, axes_closness)
-
+    # 9b- Measure properties of labelled image regions
     properties = regionprops(img_labels, intensity_image=img_gray, extra_properties=extra_callbacks)
+    print(f'Region properties = {len(properties)}')
 
-    end = time.time()
-    print(f'[{end-start:g} seconds]')
-    print(f'    Region properties found = {len(properties)}')
-
-    # Compute compactness
+    # 9c- Compute compactness
     for p in properties:
         # avoid division by zero
         if(p.perimeter == 0.0):
@@ -242,37 +339,58 @@ if __name__=="__main__":
         else:
             p.compactness = compute_compactness(p.area, p.perimeter)
 
-
-    # Remove every properties that have a perimeter of zero
-    properties[:] = [p for p in properties if p["compactness"] > 0.0]
+    # 9d- Remove every properties that have a perimeter of 0
+    properties[:] = [p for p in properties if p["perimeter"] > 0.0]
     print(f'Region properties, after removing small objects = {len(properties)}')
 
-
-    # Compute axes_closness
+    # 9e- Compute axes_closness
     for p in properties:
-        p.axes_closness = compute_axes_closness(p.axis_major_length, p.axis_minor_length)
+        # avoid division by zero
+        if p.axis_major_length == 0.0 or p.axis_minor_length == 0:
+            p.axes_closness = 0.0
+        else:
+            p.axes_closness = compute_axes_closness(p.axis_major_length, p.axis_minor_length)
 
-
-    # Find the nearest neighbors with ckDTree
+    # 9f- Find the nearest neighbors with ckDTree
     print('Computing distance to nearest neighboring cells...')
-    start = time.time()
 
     centroids = [p["centroid"] for p in properties]
     tree = cKDTree(centroids)
+    k = nn_query_size
+    if(k > len(centroids)):
+        k = len(centroids)
 
     for i in range(0, len(centroids)):
         centroid = centroids[i]
-        dd, ii = tree.query(centroid, 2)
+        dd, ii = tree.query(centroid, k)
 
         p = properties[i]
-        p.min_distance_nn = dd[1]
+        p.nn_centroid_distance = dd[1]
+        radius = p.equivalent_diameter_area/2.0
 
-    end = time.time()
-    print(f'[{end-start:g} seconds]')
+        # compute collision distance
+        prev_nn_diameter = float('-inf')
+        prev_collision_distance = float('+inf')
 
+        for index in range(1, len(ii)):
+            pnn = properties[ii[index]]
+            nn_diameter = pnn.equivalent_diameter_area
 
-    # Compute metric for best colonies
-    max_min_distance_nn = max(p["min_distance_nn"] for p in properties if p["compactness"] >= 0.2)
+            # only compute if the radius of the cell is greater then the previous
+            # cell, because the centroid distance will be greater, so a greater
+            # radius must be achieved so that the collision distance may shrink
+            if  nn_diameter > prev_nn_diameter:
+                prev_nn_diameter = nn_diameter
+                nn_radius = nn_diameter / 2.0
+
+                collision_distance = dd[index] - (radius + nn_radius)
+
+                if(collision_distance < prev_collision_distance):
+                    prev_collision_distance = collision_distance
+                    p.nn_collision_distance = collision_distance
+
+    # 9g- Compute cell_quality metric an discard cell's based on user threshold
+    max_nn_collision_distance = max(p["nn_collision_distance"] for p in properties if p["compactness"] >= 0.2 and p["nn_collision_distance"] >= 0)
     max_area = max(p["area"] for p in properties if p["compactness"] >= 0.2)
 
     quality_metrics = np.empty(len(properties), dtype=object)
@@ -280,212 +398,224 @@ if __name__=="__main__":
         p = properties[i]
 
         # normalize
-        area = p.area / max_area
-        min_distance_nn = p.min_distance_nn / max_min_distance_nn
+        n_area = p.area / max_area
+        n_nn_collision_distance = p.nn_collision_distance / max_nn_collision_distance
 
         # clamp compactness to 1
-        compactness = p.compactness
-        if(compactness > 1.0):
-           compactness =1.0
+        n_compactness = p.compactness
+        if(n_compactness > 1.0):
+           n_compactness =1.0
 
         # invert eccentricity ratio
-        eccentricity = 1.0 - p.eccentricity
+        n_eccentricity = 1.0 - p.eccentricity
+
+        metrics_used = 0
+        if(weight_area):
+            metrics_used += 1
+        if(weight_compactness):
+            metrics_used += 1
+        if(weight_eccentricity):
+            metrics_used += 1
+        if(weight_nn_collision_distance):
+            metrics_used += 1
+        if(weight_solidity):
+            metrics_used += 1
+
+        if( not metrics_used):
+            print("Metrics weights are all zeroes")
+            sys.exit(1)
 
         # compute quality metric
-        cell_quality = (2.0  * area +
-                        2.0  * min_distance_nn +
-                        1.0  * compactness +
-                        # 2.0 * p.axes_closness +
-                        0.25 * eccentricity +
-                        1.0  * p.solidity) / 5.0
+        cell_quality = (weight_area  * n_area +
+                        weight_compactness  * n_compactness +
+                        weight_eccentricity * n_eccentricity +
+                        weight_nn_collision_distance  * n_nn_collision_distance +
+                        weight_solidity  * p.solidity) / metrics_used
 
         # discard cells
-        if(p.compactness < min_compactness or
-           p.solidity < min_solidity or
-           p.eccentricity > max_eccentricity or
-           p.equivalent_diameter_area < cell_min_diameter or
-           p.equivalent_diameter_area > cell_max_diameter):
+        if(cell_min_diameter and p.equivalent_diameter < cell_min_diameter):
+            p.discarded = True
+            p.discarded_description += f'Cell equivalent diameter is lower then the requested threshold: {p.equivalent_diameter:.2f} < {cell_min_diameter:.2f}\n'
+            cell_quality = 0.0
+        if(cell_max_diameter and p.equivalent_diameter > cell_max_diameter):
+            p.discarded = True
+            p.discarded_description += f'Cell equivalent diameter is higher then the requested threshold: {p.equivalent_diameter:.2f} > {cell_max_diameter:.2f}\n'
+            cell_quality = 0.0
+        if(cell_min_compactness and p.compactness < cell_min_compactness):
+            p.discarded = True
+            p.discarded_description += f'Cell compactness is lower then the requested threshold: {p.compactness:.2f} < {cell_min_compactness:.2f}\n'
+            cell_quality = 0.0
+        if(cell_min_solidity and p.solidity < cell_min_solidity):
+            p.discarded = True
+            p.discarded_description += f'Cell solidity is lower then the requested threshold: {p.solidity:.2f} < {cell_min_solidity:.2f}\n'
+            cell_quality = 0.0
+        if(cell_max_eccentricity and p.eccentricity > cell_max_eccentricity):
+            p.discarded = True
+            p.discarded_description += f'Cell eccentricity is higher then the requested threshold: {p.eccentricity:.2f} > {cell_max_eccentricity:.2f}\n'
+            cell_quality = 0.0
+        if(p.nn_collision_distance < 0): # in collision
+            p.discarded = True
+            p.discarded_description += f'Cell is in collision. Distance: {p.nn_collision_distance:.2f}\n'
             cell_quality = 0.0
 
-        quality_metrics[i] = (cell_quality, i)
 
+        quality_metrics[i] = (cell_quality, i)
         p.cell_quality = cell_quality
 
 
-    # remove outliers wrt. area of non discarded cell's
-    area_std = statistics.pstdev(p["area"] for p in properties if p.cell_quality > 0.0)
-    area_mean = statistics.mean(p["area"] for p in properties if p.cell_quality > 0.0)
+    # remove outliers wrt. diameter of non discarded cell's
+    if(std_weight_diameter):
+        diameter_std = statistics.pstdev(p["equivalent_diameter"] for p in properties if p.cell_quality > 0.0)
+        diameter_mean = statistics.mean(p["equivalent_diameter"] for p in properties if p.cell_quality > 0.0)
 
-    # print(area_std)
-    # print(area_mean)
-    # print(area_mean - 1.5* area_std)
-    # print(area_mean + 1.5* area_std)
-    for i in range(0, len(properties)):
-        p = properties[i]
-        if (p.area < area_mean - 1.5* area_std or
-            p.area > area_mean + 1.5* area_std):
-            # print(f'label {p.label} discarded due to being below std')
-            p.cell_quality = 0.0
-            quality_metrics[i] = (p.cell_quality, i)
+        for i in range(0, len(properties)):
+            p = properties[i]
+            if (p.equivalent_diameter < diameter_mean - std_weight_diameter* diameter_std):
+                p.discarded = True
+                p.discarded_description += f'Cell diameter is outside the requested std distribution: {p.equivalent_diameter:.2f} < {(diameter_mean - std_weight_diameter* diameter_std):.2f},\nwhere mean = {diameter_mean:.2f}, sigma = {std_weight_diameter:.2f}, std = {diameter_std:.2f}\n'
+                # print(f'label {p.label} discarded due to being below std')
+                p.cell_quality = 0.0
+                quality_metrics[i] = (p.cell_quality, i)
+            elif(p.equivalent_diameter > diameter_mean + std_weight_diameter* diameter_std):
+                p.discarded = True
+                p.discarded_description += f'Cell diameter is outside the requested std distribution: {p.equivalent_diameter:.2f} > {(diameter_mean + std_weight_diameter* diameter_std):.2f},\nwhere mean = {diameter_mean:.2f}, sigma = {std_weight_diameter:.2f}, std = {diameter_std:.2f}\n'
+                # print(f'label {p.label} discarded due to being below std')
+                p.cell_quality = 0.0
+                quality_metrics[i] = (p.cell_quality, i)
 
 
+
+    # 10- sort by best cell_quality metrics (higher is better)
     # TODO itemgetter might be faster then a lambda
     # https://stackoverflow.com/a/10695158
     reverse_metrics = sorted(quality_metrics, key=lambda x: x[0], reverse=True)
 
-
-    # print algorithm process time, excluding plotting
-    global_time += time.time() - global_start
-    print(f'Pipeline processing took {global_time:g} seconds (excluding plotting)')
-
-    # Print image segmentation process
-    if(plot_segmentation_process):
-        print(f'Plotting segmentation process...')
-        start = time.time()
+    # 11- Reduce list to requested number of cells
+    reverse_metrics_slice = reverse_metrics
+    if(max_cells and len(reverse_metrics) > max_cells):
+        reverse_metrics_slice = reverse_metrics[0:max_cells]
 
 
-        fig, axes = plt.subplots(ncols=4, nrows=3, figsize=(9, 9), sharex=True, sharey=True)
-        ax = axes.ravel()
+    # Save cell annotation
+    ax_annotation = None
+    if save_cell_annotation:
+        if len(reverse_metrics_slice) != 0:
+            result_img = img_original_cropped.copy()
+
+            dpi_value = 100
+            height, width = result_img.shape[:2]
+
+            fig, ax = plt.subplots()
+            ax.imshow(result_img)
+            ax.axis('off')
+
+            # circle up best matches
+            index  = 1
+            for metric in reverse_metrics_slice:
+                p = properties[metric[1]]
+
+                diameter = p["equivalent_diameter_area"]
+                centroid_local = [p.centroid[0], p.centroid[1]]
+
+                point = (0,0)
+                point = (centroid_local[1], centroid_local[0])
+
+                radius = diameter/2.0
+                circle = plt.Circle(point, radius=radius, fc='none', color='red')
+                ax.add_patch(circle)
+                ax.annotate(index, xy=(point[0]+radius, point[1]-radius), color='red')
+                index += 1
+
+            # Set exact figure size to match original dimensions
+            fig.set_size_inches(width / dpi_value, height / dpi_value)
+
+            # Ensure there are no margins by setting tight layout and removing axis padding
+            plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+
+            # Set transparent background
+            fig.patch.set_alpha(0)
+
+            plt.savefig(f'{output_path}/annotated_cell.png', bbox_inches='tight', pad_inches=0, dpi=dpi_value, transparent=True)
+
+    # Save segementation process
+    if save_segmentation_process:
+        layout = [
+            ["A", "B", "C",],
+            ["D", "E", "F",],
+            ["G", "H", "I",],
+        ]
+
+        fig, axd = plt.subplot_mosaic(layout, constrained_layout=True, dpi=300)
 
 
-        ax[0].imshow(img)
-        ax[0].set_title('Input image')
-        ax[1].imshow(img_gray, cmap=plt.cm.gray)
-        ax[1].set_title('Grayscale')
-        ax[2].imshow(img_bw, cmap=plt.cm.gray)
-        ax[2].set_title(f'Threshold')
-        ax[3].imshow(sure_bg, cmap=plt.cm.gray)
-        ax[3].set_title(f'Sure Foreground')
+        axd['A'].imshow(img_original_cropped)
+        axd['A'].set_title('Crop')
+        axd['A'].set_axis_off()
 
-        ax[4].imshow(sure_fg, cmap=plt.cm.gray)
-        ax[4].set_title(f'Sure Background')
-        ax[5].imshow(img_distance, cmap=plt.cm.gray)
-        ax[5].set_title('Distance transform')
-        ax[6].imshow(-img_distance, cmap=plt.cm.gray)
-        ax[6].set_title('Distance transform negative')
+        axd['B'].imshow(img_gray, cmap=plt.cm.gray)
+        axd['B'].set_title('Mask')
+        axd['B'].set_axis_off()
 
-        ax[7].imshow(img_labels, cmap=plt.cm.nipy_spectral)
-        ax[7].set_title('Watershed segmentation')
+        axd['C'].imshow(img_threshold, cmap=plt.cm.gray)
+        axd['C'].set_title('Threshold')
+        axd['C'].set_axis_off()
 
-        ax[8].imshow(img_original_cropped)
-        ax[8].set_title(f'Cell\'s Centroid N={len(properties)}')
-        # add X marks on centroids
-        for p in properties:
-            ax[8].scatter(p.centroid[1], p.centroid[0], s=20, c='red', marker='x', linewidth=1)
+        axd['D'].imshow(img_mask_artifacts, cmap=plt.cm.gray)
+        axd['D'].set_title('Filter')
+        axd['D'].set_axis_off()
 
-        ax[9].imshow(img_original_cropped)
-        ax[9].set_title(f'Overlapping cell\'s removed N={len(properties)}')
-        # add X marks on centroids
-        for p in properties:
-            ax[9].scatter(p.centroid[1], p.centroid[0], s=20, c='red', marker='x', linewidth=1)
+        axd['E'].imshow(closing, cmap=plt.cm.gray)
+        axd['E'].set_title('Closing')
+        axd['E'].set_axis_off()
 
-        ax[10].imshow(img_original_cropped)
-        ax[10].set_title(f'Best colonies to pick')
+        axd['F'].imshow(opening, cmap=plt.cm.gray)
+        axd['F'].set_title('Opening')
+        axd['F'].set_axis_off()
 
-        ax[10].patches
-        # circle up best matches
-        index = 1
-        for p in properties:
-            point = (p.centroid[1], p.centroid[0])
-            radius = p.equivalent_diameter_area/2.0 + 5
+        axd['G'].imshow(img_distance, cmap=plt.cm.gray)
+        axd['G'].set_title('Distance')
+        axd['G'].set_axis_off()
 
-            circle = plt.Circle(point, radius=radius, fc='none', color='red')
-            ax[10].add_patch(circle)
-            ax[10].annotate(index, xy=(point[0]+radius, point[1]+radius), color='red')
-            index += 1
+        axd['H'].imshow(img_labels, cmap=plt.cm.nipy_spectral)
+        axd['H'].set_title('Watershed')
+        axd['H'].set_axis_off()
 
-
-        for a in ax:
-            a.set_axis_off()
-
-        plt.tight_layout()
-
-        end = time.time()
-        print(f'[{end-start:g} seconds]')
-
-        plt.show()
-
-
-
-    # Annotate best cells to pick
-    imgdata = BytesIO()
-    if (plot_cell_annotation):
-        fig, ax = plt.subplots()
-
-        ax.imshow(img_original_cropped)
-        ax.set_title(f'Best colonies to pick')
-
-        # circle up best matches
-        index  = 1
-        for metric in reverse_metrics:
-            p = properties[metric[1]]
-
-            point = (p.centroid[1], p.centroid[0])
-            radius = p.equivalent_diameter_area/2.0 + 5
-
-            circle = plt.Circle(point, radius=radius, fc='none', color='red')
-            ax.add_patch(circle)
-            ax.annotate(index, xy=(point[0]+radius, point[1]-radius), color='red')
-
-            if (index == number_of_cells_to_pick):
-                break
-            index += 1
-
-
-        # plt.figure(dpi=1200)
-        if(save_pictures):
-            plt.savefig(imgdata, format='png', bbox_inches='tight')
-            imgdata.seek(0) # rewind the data
-
+        if ax_annotation:
+            print("OK")
+            axd['I'] = ax_annotation
+            axd['I'].set_title('Best Cell\'s')
+            axd['I'].set_axis_off()
 
         plt.tight_layout()
-        plt.show()
+        plt.savefig(f"{output_path}/segmentation.png")
 
 
-    # Plot region properties interactively
-    if (plot_interactive_properties):
-        property_names = ['area',
-                          'eccentricity',
-                          'perimeter',
-                          'solidity',
-                          'compactness',
-                          'axes_closness',
-                          'min_distance_nn',
-                          'cell_quality']
+        # save as images
+        imsave(f'{output_path}/crop.png', img_original_cropped)
+        imsave(f'{output_path}/mask.png', img_gray)
+        imsave(f'{output_path}/threshold.png', img_threshold)
+        imsave(f'{output_path}/filter.png', img_mask_artifacts)
+        imsave(f'{output_path}/closing.png', closing)
+        imsave(f'{output_path}/opening.png', opening)
 
-        print("Generating region properties interactively plot, this may take some time...")
-        plot_region_roperties(img_original_cropped, img_labels, properties, property_names)
+        # Normalize and convert to uint8
+        dist_normalized = img_distance / np.max(img_distance)
+        dist_uint8 = img_as_ubyte(dist_normalized)
+        imsave(f'{output_path}/distance.png', dist_uint8)
 
-
-
-
-    path = os.path.join(os.getcwd(), "result/")
-    path += time.strftime("%Y%m%d-%H%M%S") #avoid name clash
-
-    if(save_pictures or save_properties):
-        # Create the directory
-        try:
-            os.mkdir(path)
-            print(f'Saving images to: {path}')
-        except FileExistsError:
-            print(f"Directory '{path}' already exists.")
-        except PermissionError:
-            print(f"Permission denied: Unable to create '{path}'.")
-        except Exception as e:
-            print(f"An error occurred: {e}")
+        plt.imsave(f'{output_path}/watershed.png', img_labels, cmap='nipy_spectral')
 
 
-    if(save_pictures):
-        io.imsave(path + '/cropped.png', img_cropped)
-        with open(path + '/annotated.png', "wb") as f:
-            f.write(imgdata.read())
-
-    if(save_properties):
+    # Generate excel properties sheet
+    if save_properties:
         # select properties included in the table
         prop_names = ('label',
                       'cell_quality',    # custom
                       'compactness',     # custom
-                      'min_distance_nn', # custom
+                      'nn_centroid_distance', # custom
+                      'nn_collision_distance', # custom
+                      'discarded', # custom
+                      'discarded_description', # custom
                       'axes_closness',   # custom
                       'area',
                       'area_bbox',
@@ -514,7 +644,7 @@ if __name__=="__main__":
                       'intensity_max',
                       'intensity_mean',
                       'intensity_min',
-                      'intensity_std',
+                      # 'intensity_std', # requires scikit-image 0.24.0
                       'label',
                       'moments',
                       'moments_central',
@@ -531,7 +661,44 @@ if __name__=="__main__":
                       'slice',
                       'solidity',)
 
+        # Generate dictionary of properties
         props_dict = regionprops_to_dict(properties, prop_names)
 
+        # Find the max length of string metrics, e.g. with 'discarded_description'
+        max_description_size = 0
+        for p in properties:
+            description_size = len(p.discarded_description)
+            if(description_size > max_description_size):
+                max_description_size = description_size
+
+        # Recreate string metrics with a fixed unicode string
+        props_dict["discarded_description"] = np.empty(len(properties), dtype=f'<U{max_description_size}')
+        for i in range(len(properties)):
+            props_dict["discarded_description"][i] = properties[i].discarded_description
+
+        # Convert to DataFrame
         df = pd.DataFrame(props_dict)
-        df.to_excel(path + '/region_properties.xlsx', index=False)
+        df.to_excel(f'{output_path}/region_properties.xlsx', index=False)
+
+
+    # Plot interactive region properties
+    if plot_interactive_properties:
+        property_names = ['area',
+                          'eccentricity',
+                          'perimeter',
+                          'solidity',
+                          'compactness',
+                          'axes_closness',
+                          'equivalent_diameter',
+                          'nn_collision_distance',
+                          'cell_quality',
+                          'discarded',
+                          'discarded_description']
+
+        print(f"Plotting region properties ({len(properties)}) interactively, this may take some time...")
+        plot_region_roperties(img_original_cropped, img_labels, properties, property_names)
+
+
+    print("===")
+    print("Completed")
+    print("===")
