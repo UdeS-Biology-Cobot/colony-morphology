@@ -44,5 +44,4 @@ def ensure_outdir(base: str) -> str:
     ts = time.strftime("%Y-%m-%d_%H-%M-%S")
     out = os.path.join(os.getcwd(), base, ts)
     os.makedirs(out, exist_ok=True)
-    print(f"Saving artifacts to: {out}")
     return out

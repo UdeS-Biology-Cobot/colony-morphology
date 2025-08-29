@@ -45,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Std-deviation filter on equivalent diameter (0 to disable).")
 
     # Outputs
+    p.add_argument("-v", "--verbose", dest="verbose", action="store_true", default=True, help="Enable verbose logging with per-step timings.")
     p.add_argument("--outdir", dest="outdir", default="result", type=str,
                    help="Directory to create timestamped run folder in.")
     p.add_argument("--save-circle-detection", dest="save_circle_detection", action="store_true", default=True)
@@ -99,8 +100,9 @@ def main(argv=None) -> int:
     )
 
     # Use the file-based wrapper which delegates to run_from_array under the hood.
-    top_idx, props, outdir = run(params, weights, thresholds, outputs)
+    top_idx, props, outdir = run(params, weights, thresholds, outputs, args.verbose)
 
+    print("")
     print("=== Top colonies ===")
     for rank, idx in enumerate(top_idx, start=1):
         p = props[idx]
@@ -110,7 +112,6 @@ def main(argv=None) -> int:
         diam = p["equivalent_diameter_area"]
         centroid = p["centroid"]
         print(f"{rank:2d}. label={p.label:4d} area={area:7.1f} diam={diam:7.2f} quality={qual:6.3f} centroid=(y={centroid[0]:.1f}, x={centroid[1]:.1f})")
-    print("Artifacts (if enabled) saved under:", outdir)
 
     return 0
 
