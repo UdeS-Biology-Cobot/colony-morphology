@@ -90,7 +90,7 @@ def run_from_array(image_rgb, params: Params, weights: Weights, thr: Thresholds,
         if out.save_segmentation_process:
             with timer("5.3) save segmentation process", verbose, output_timings):
                 save_segmentation_mosaic(assets, img_orig_crop_rgb, labels, f"{outdir}/segmentation.png")
-                imsave(f'{outdir}/crop.png', img_orig_crop_rgb)
+                imsave(f'{outdir}/crop.png', img_orig_crop_rgb, check_contrast=False)
                 save_scalar_images(assets, outdir)
 
         if out.save_properties:

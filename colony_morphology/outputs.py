@@ -17,7 +17,7 @@ def draw_circle_debugs(img_rgb, scale, coarse_circle, refined_circle, adjusted_p
     simg = np.clip(rescale(img_rgb, scale=scale, anti_aliasing=True, channel_axis=-1), 0, 1).copy()
     rr, cc = circle_perimeter(int(cy_f), int(cx_f), int(r_f), shape=simg.shape)
     simg[rr, cc] = (0.0, 1.0, 0.2)
-    imsave(f"{outdir}/circle_detection_scaled.png", img_as_ubyte(simg))
+    imsave(f"{outdir}/circle_detection_scaled.png", img_as_ubyte(simg), check_contrast=False)
 
     # original
     oimg = img_rgb.copy()
@@ -26,7 +26,7 @@ def draw_circle_debugs(img_rgb, scale, coarse_circle, refined_circle, adjusted_p
     if adjusted_points is not None:
         for pt in adjusted_points:
             oimg[int(pt[1]), int(pt[0])] = (255, 0, 0)
-    imsave(f"{outdir}/circle_detection_original.png", oimg)
+    imsave(f"{outdir}/circle_detection_original.png", oimg, check_contrast=False)
 
 def annotate_best_cells(img_rgb, properties, top_indices, outpath):
     fig, ax = plt.subplots()
@@ -61,13 +61,13 @@ def save_segmentation_mosaic(assets, img_orig_crop_rgb, labels, outpath_png):
     plt.savefig(outpath_png); plt.close(fig)
 
 def save_scalar_images(assets, outdir):
-    imsave(f'{outdir}/mask.png', assets["img_gray"])
-    imsave(f'{outdir}/threshold.png', img_as_ubyte(assets["img_mask_artifacts"]))
-    imsave(f'{outdir}/closing.png', img_as_ubyte(assets["closing"]))
-    imsave(f'{outdir}/opening.png', img_as_ubyte(assets["opening"]))
+    imsave(f'{outdir}/mask.png', assets["img_gray"], check_contrast=False)
+    imsave(f'{outdir}/threshold.png', img_as_ubyte(assets["img_mask_artifacts"]), check_contrast=False)
+    imsave(f'{outdir}/closing.png', img_as_ubyte(assets["closing"]), check_contrast=False)
+    imsave(f'{outdir}/opening.png', img_as_ubyte(assets["opening"]), check_contrast=False)
     dist = assets["dist"]
     dist_norm = dist / np.max(dist) if np.max(dist) > 0 else dist
-    imsave(f'{outdir}/distance.png', img_as_ubyte(dist_norm))
+    imsave(f'{outdir}/distance.png', img_as_ubyte(dist_norm), check_contrast=False)
     plt.imsave(f'{outdir}/watershed.png', assets["labels"], cmap='nipy_spectral')
 
 def plot_region_properties_interactive(img_rgb, labels, properties, property_names):
