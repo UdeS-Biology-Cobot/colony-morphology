@@ -34,18 +34,16 @@ $ pip install .
 
 ## Run
 
-Try playing with different [parameters](./demo/demo.py#L46-L80), you can also enable different [saving and plot options](./demo/demo.py#L87-L92):
+Try playing with different [parameters](./demo/demo.py#L11-L44), you can also enable different [output options](./demo/demo.py#L48-L58):
 
 ``` sh
 # realsense camera
-$ python3 demo/demo.py --image_path=dataset/intel_rs_d415_1.png --dish_diameter=882 --dish_offset=67
+$ python3 demo/demo.py --image=dataset/intel_rs_d415_1.png --dish-diameter=882 --dish-offset=67
 
-$ python3 demo/demo.py --image_path=dataset/intel_rs_d415_2.png --dish_diameter=882 --dish_offset=67
+$ python3 demo/demo.py --image=dataset/intel_rs_d415_2.png --dish-diameter=882 --dish-offset=67
 
 # oneplus camera
-# Note: modify closing/opening kernel respectively to (9,9) and (3,3)
-$ python3 demo/demo.py --image_path=dataset/oneplus_hd1900_1.jpg --dish_diameter=2100 --dish_offset=200 --cell_min_diameter=12
-
+$ python3 demo/demo.py --image=dataset/oneplus_hd1900_1.jpg --dish-diameter=2100 --dish-offset=200 --cell-min-diameter=12
 ```
 
 ## Results
