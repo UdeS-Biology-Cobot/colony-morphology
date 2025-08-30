@@ -23,7 +23,7 @@ Apply a mask based on the petri dish radius and use the watershed algorithm to f
 ## Dependencies
 Install dependencies:
 ``` sh
-$ pip install -r requirements
+$ pip install -r requirements.txt
 ```
 
 ## Build
